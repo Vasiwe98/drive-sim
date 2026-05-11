@@ -9,14 +9,20 @@
 import * as CANNON from 'cannon-es'
 
 const BLEND_IN_SEC = 0.20
-const BLEND_OUT_SEC = 0.30
-const FOLLOW_RATE = 18           // exponential follow toward target Y
-const ENTER_GATE = 1.5           // max vertical distance from ramp surface to "enter"
-const RIDE_HEIGHT = 0.85         // chassis center Y above ramp surface when "on" the ramp
-// Scaled for mass 1500 (Porsche). At F/m=8.7 m/s² these match flat-ground feel.
+const FOLLOW_RATE = 18
+const ENTER_GATE = 1.5
+// Match the natural wheel-supported equilibrium height: wheel radius (0.5)
+// + suspension at rest equilibrium compression (≈0.239) + connection offset
+// (0.15) = 0.889. With this, when the car exits a ramp onto a flat surface
+// (e.g. bridge deck) the wheel suspension transitions cleanly — no bounce.
+const RIDE_HEIGHT = 0.889
 const RAMP_ENGINE_FORCE = 13000
 const RAMP_REVERSE_FORCE = -6000
-const MAX_YAW_RATE = 1.4         // rad/s, slightly tamer than flat ground
+// Speed-sensitive yaw — at standstill we barely turn, at speed we steer
+// like a real car. Avoids the "spin in place" feel at low speed.
+const MAX_YAW_RATE_FAST = 0.9    // rad/s at top of the speed scale
+const YAW_SPEED_SCALE_MPS = 20   // speed at which yaw factor hits 1.0
+const YAW_MIN_FACTOR = 0.08      // floor so you can still inch around at crawl
 
 export function createRampController(car, ramps, input) {
   let activeRamp = null
@@ -122,11 +128,25 @@ export function createRampController(car, ramps, input) {
         v.z *= 0.97
       }
 
-      // Yaw steering (direct angular velocity for snappy ramp control)
+      // Yaw steering — speed-sensitive so the car doesn't spin in place at
+      // low speed. yawFactor scales linearly from YAW_MIN_FACTOR at zero
+      // speed up to 1.0 once we hit YAW_SPEED_SCALE_MPS.
+      const horizontalSpeed = Math.sqrt(
+        car.chassisBody.velocity.x * car.chassisBody.velocity.x +
+        car.chassisBody.velocity.z * car.chassisBody.velocity.z
+      )
+      const yawFactor = Math.max(
+        YAW_MIN_FACTOR,
+        Math.min(1, horizontalSpeed / YAW_SPEED_SCALE_MPS)
+      )
       let yawRate = 0
-      if (input.left) yawRate = MAX_YAW_RATE
-      else if (input.right) yawRate = -MAX_YAW_RATE
+      if (input.left) yawRate = MAX_YAW_RATE_FAST * yawFactor
+      else if (input.right) yawRate = -MAX_YAW_RATE_FAST * yawFactor
       car.chassisBody.angularVelocity.y = yawRate
+      // Belt and suspenders — explicitly zero pitch/roll angular velocity
+      // (angularFactor already filters torques but stray velocity can persist).
+      car.chassisBody.angularVelocity.x = 0
+      car.chassisBody.angularVelocity.z = 0
     } else {
       car.setSuspendVehicleControl(false)
     }
