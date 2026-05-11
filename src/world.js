@@ -249,8 +249,13 @@ export function buildWorld(scene, world) {
   // behind chassis center) are still over the no-physics ramp visual.
   // Without these extensions their raycasts fall through to the ground,
   // suspension fully extends, and the wheels visibly dip below the deck.
-  addStaticBox(world, scene, { x: 0, y: 3, z: -54 }, { x: 12, y: 0.5, z: 6 })
-  addStaticBox(world, scene, { x: 0, y: 3, z: -86 }, { x: 12, y: 0.5, z: 6 })
+  // Narrow (sizeZ=2) so they only cover the trailing-wheel transition zone
+  // and DON'T extend into the ramp's visual mid-section. Wider extensions
+  // would collide with the chassis collider during climb (the chassis y at
+  // chassis_z ≈ -51 on the climb is ~3.5, and a chassis collider with no
+  // offset sits at y ± 0.25, which overlaps the extension's [2.75, 3.25]).
+  addStaticBox(world, scene, { x: 0, y: 3, z: -54 }, { x: 12, y: 0.5, z: 2 })
+  addStaticBox(world, scene, { x: 0, y: 3, z: -86 }, { x: 12, y: 0.5, z: 2 })
   // Bridge approach ramps. high.y matches the deck TOP (3.25 = deck center
   // 3 + halfExtents.y 0.25) so the chassis is delivered flush with the deck
   // surface, not 0.25m short.
