@@ -141,11 +141,14 @@ export function createRampController(car, ramps, input) {
     // the ramp footprint, this vy persists and the car arcs into the air
     // realistically — no artificial impulse needed.
     //
-    // Skip this for ramps with extendHigh (bridge approach ramps that
-    // lead onto a flat platform). On those we want a coast hand-off, not
-    // a launch. Inside the extended-engagement zone the actual surface
-    // is flat anyway, so a non-zero vy would be bogus.
-    if (blendT > 0.4 && !activeRamp.extendHigh) {
+    // CRITICAL: this also cancels gravity-velocity accumulation each frame.
+    // Ramps have no physics body so wheel raycasts miss during the climb;
+    // suspension force is zero; gravity is unopposed. Without this reset
+    // velocity.y grows unboundedly negative and the asymptotic position
+    // follow falls behind — visible as the chassis body sinking below the
+    // tyres during the climb. So this block runs regardless of extendHigh.
+    // The launch-vs-coast distinction is handled at release time instead.
+    if (blendT > 0.4) {
       const r = activeRamp
       const axisHigh = r.axis === 'x' ? r.high.x : r.high.z
       const axisLow = r.axis === 'x' ? r.low.x : r.low.z
