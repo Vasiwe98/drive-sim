@@ -141,7 +141,13 @@ export function createRampController(car, ramps, input) {
       else if (input.backward) force = RAMP_REVERSE_FORCE
       if (force !== 0) {
         _forceScratch.set(_fwdWorld.x * force, 0, _fwdWorld.z * force)
-        car.chassisBody.applyForce(_forceScratch, car.chassisBody.position)
+        // applyForce(force, relativePoint) — relativePoint is the OFFSET
+        // from body center to the application point, NOT a world position.
+        // Passing chassisBody.position would compute torque = pos × force,
+        // which creates a phantom yaw torque proportional to chassis X
+        // (T_y = -x * F_z) and a runaway feedback loop that pushes the
+        // car off the ramp side. Omit the second arg to apply at center.
+        car.chassisBody.applyForce(_forceScratch)
       } else {
         // Apply some friction to slow the car when no input
         const v = car.chassisBody.velocity
