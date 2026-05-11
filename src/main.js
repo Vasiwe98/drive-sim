@@ -7,6 +7,7 @@ import { buildWorld } from './world.js'
 import { CameraRig } from './cameras.js'
 import { input } from './input.js'
 import { ui, onStop } from './ui.js'
+import { createDebugPanel, updateDebugPanel } from './debug.js'
 
 const canvas = document.getElementById('game')
 const { scene, camera, renderer, controls } = createScene(canvas)
@@ -21,7 +22,10 @@ const car = createVehicle(world, scene, spawnPos)
 const cameraRig = new CameraRig(camera, controls)
 cameraRig.setTarget(car.chassisBody)
 
-// On ESC → return to menu: reset car to spawn, zero velocity.
+// Always-on debug panel — left side — so we can diagnose live state.
+// Hide later by passing false / making conditional once driving works.
+createDebugPanel(true)
+
 onStop(() => {
   car.chassisBody.position.copy(spawnPos)
   car.chassisBody.velocity.setZero()
@@ -40,12 +44,12 @@ function loop() {
   car.syncMeshes()
   cameraRig.update(dt)
 
-  // HUD updates
   if (cameraRig.mode !== lastMode) {
     lastMode = cameraRig.mode
     ui.setCameraMode(cameraRig.getModeName())
   }
   ui.setSpeed(car.getSpeedKmh())
+  updateDebugPanel(car)
 
   if (cannonDebugger) cannonDebugger.update()
   renderer.render(scene, camera)
