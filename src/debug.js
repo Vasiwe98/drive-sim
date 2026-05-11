@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-11-sink-fix-v6-narrow-extension'
+const DEPLOY_TAG = '2026-05-11-sink-fix-v7-backface-reject'
 
 let panel = null
 let lastTick = 0

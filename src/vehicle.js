@@ -37,7 +37,20 @@ import * as THREE from 'three'
     chassisBody.collisionResponse = false
     this.world.rayTest(source, _tgt, raycastResult)
     chassisBody.collisionResponse = oldState
-    const object = raycastResult.body
+    let object = raycastResult.body
+    // BACK-FACE REJECT: cannon's rayTest reports the first intersection even
+    // when the ray STARTS inside a body — for a downward wheel ray that
+    // started inside the deck box (chassis collider penetrated slightly),
+    // the hit is on the deck's UNDERSIDE with hitNormalWorld = (0,-1,0).
+    // If we accept that hit, cannon's updateSuspension hits the degenerate
+    // case (denominator >= -0.1), spring force gets multiplied by 10, and
+    // the impulse is applied along the down-pointing normal — slamming the
+    // chassis INTO the deck. Reject any hit whose normal is in roughly the
+    // same direction as the ray (i.e., a back face from our perspective).
+    if (object && wheel.directionWorld.dot(raycastResult.hitNormalWorld) > 0) {
+      raycastResult.reset()
+      object = null
+    }
     wheel.raycastResult.groundObject = 0
     if (object) {
       depth = raycastResult.distance
