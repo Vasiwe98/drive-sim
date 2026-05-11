@@ -5,8 +5,8 @@ import * as THREE from 'three'
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 2500
-const REVERSE_FORCE = -1200    // negative = -X = backward
+const MAX_ENGINE_FORCE = 3500  // more punch = more speed at the ramps = bigger launches
+const REVERSE_FORCE = -1500    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 

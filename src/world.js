@@ -129,11 +129,16 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: 40, y: 0.05, z: -30 }, { x: 80, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
   addStaticBox(world, scene, { x: -40, y: 0.05, z: 40 }, { x: 60, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
 
-  // --- Ramps: built with explicit low/high endpoints so the low edge always
-  //     touches the ground and the car can roll up. Top surface is what the
-  //     wheels actually contact.
-  buildRampZ(world, scene, { x: 30, y: 0.05, z: 16 }, { x: 30, y: 3.5, z: 28 })
-  buildRampZ(world, scene, { x: -32, y: 0.05, z: -16 }, { x: -32, y: 3.5, z: -28 })
+  // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X direction).
+  //     Steep + bright red so the player sees it immediately. ~30° slope,
+  //     5m vertical rise → satisfying launch at speed. Thin tilted box,
+  //     so the underside is elevated 4m+ at the high end — drive under it
+  //     from the side too.
+  buildRampX(world, scene, { x: 14, y: 0.05, z: 0 }, { x: 22, y: 5, z: 0 }, { width: 14, color: 0xd92e2e })
+
+  // --- Other ramps (steeper than before for better launches)
+  buildRampZ(world, scene, { x: 30, y: 0.05, z: 16 }, { x: 30, y: 4.5, z: 24 })
+  buildRampZ(world, scene, { x: -32, y: 0.05, z: -16 }, { x: -32, y: 4.5, z: -24 })
   buildRampX(world, scene, { x: 53, y: 0.05, z: -55 }, { x: 67, y: 4.5, z: -55 })
   buildRampX(world, scene, { x: -67, y: 4.5, z: 55 }, { x: -53, y: 0.05, z: 55 })
 
