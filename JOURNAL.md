@@ -29,3 +29,11 @@ Moved the project to `C:\Users\vasiw\code\drive-sim`. GitHub handles the backup 
 ## 2026-05-10 — Task 0 complete
 
 Scaffold up. Live preview building at https://vasiwe98.github.io/drive-sim/ from a 0.94 KB JS bundle and a 0.90 KB HTML file (basically just a `console.log`). Total time to first deploy from `git init` → live URL: well under an hour despite the Node install detour and the Drive migration.
+
+## 2026-05-10 — Task 1 complete
+
+Three.js scene live: sky-blue background, hemi + directional sun, 400×400 green ground plane, fog from 80m to 280m, soft shadow map, OrbitControls for free inspection. Bundle jumped from 0.94 KB to 487 KB (gzip 122 KB) — that's Three.js's full library coming along. Acceptable for a demo; tree-shaking will trim some when the unused parts get dropped.
+
+Factored into `src/scene.js` (factory `createScene(canvas) → { scene, camera, renderer, controls }`) and `src/main.js` (animation loop). Clean separation sets up the integration pattern for tasks 2–6.
+
+[LINKEDIN] The "spinning 3D world in a browser" demo that would've been a serious milestone in 2014 (download libgl, configure shaders, write a vertex/fragment program just to draw a plane) is now ~50 lines of Three.js. Three primitives — `WebGLRenderer`, `PerspectiveCamera`, `Scene` — and you're animating at 60fps with antialiasing and shadow maps on by default.

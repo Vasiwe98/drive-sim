@@ -1,5 +1,15 @@
-// Drive Sim — entry point.
-// Each task in PLAN.md wires up another piece here.
-console.log('Drive Sim — scaffold up. Next: Three.js scene (task 1).')
+import * as THREE from 'three'
+import { createScene } from './scene.js'
 
-document.body.innerHTML += '<div style="position:fixed;top:20px;left:20px;color:white;text-shadow:0 0 4px black;font-size:24px;">Drive Sim — scaffold OK</div>'
+const canvas = document.getElementById('game')
+const { scene, camera, renderer, controls } = createScene(canvas)
+
+const clock = new THREE.Clock()
+
+function loop() {
+  const dt = clock.getDelta()
+  controls.update()
+  renderer.render(scene, camera)
+  requestAnimationFrame(loop)
+}
+loop()
