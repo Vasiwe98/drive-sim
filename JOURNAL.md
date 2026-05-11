@@ -79,3 +79,19 @@ Did the landing screen out of order while the parallel tabs work on world.js and
 `src/ui.js` exposes `isStarted()` and `hideLanding()`. `main.js` gates `car.applyInput(input)` behind `ui.isStarted()` so the car stays still until Start is hit (the physics loop and rendering still run — it's idle, not paused).
 
 [LINKEDIN] In 2014 the "title screen" of my Blender project was a print statement in the terminal. In 2026, ~80 lines of HTML/CSS give me a card-based start screen with backdrop blur, key-style monospace badges, a big tactile orange CTA, and a footer link to the repo — all rendered on top of a live, paused 3D world that's already loaded behind it.
+
+## 2026-05-10 — Parallel-tab integration
+
+The two parallel tabs finished `src/world.js` and `src/cameras.js` but hit a snag pushing: they were still working in the original `G:\My Drive\AI Projects\vehicle-3d-simulation` location, which has no node_modules and no GitHub remote (those got set up after I migrated the project to `C:\Users\vasiw\code\drive-sim` to dodge the Drive sync issue). Solution was simple: read both files from the G:\ location and copy them into the new project.
+
+One coordinate-convention mismatch caught at integration time: the cameras-tab wrote `cameras.js` assuming the car's forward direction was `+Z`, but my `vehicle.js` had labeled `-X` as forward (FL wheel at x=-1, headlights face -X, cabin shifts toward -X). Three lines in cameras.js needed adjusting: `followOffset` (camera behind = +X), `hoodOffset` (forward = -X), and the inline `_forward.set(0,0,1)` → `_forward.set(-1,0,0)`. Caught it at code review before deployment, not at "why is the camera pointing the wrong way" time.
+
+[LINKEDIN] Lesson from parallel-tab development: interface contracts are necessary but not sufficient. Two agents implementing different files with clean signatures can still produce a mismatch if they're each assuming different conventions inside the same coordinate space. Code review at the integration point matters even when the integration is "just" `import` lines.
+
+## 2026-05-10 — MVP integration done
+
+`main.js` now imports `buildWorld` and `CameraRig`. The playground builds first (returning `{ spawnPos }`), the car spawns at that point, the CameraRig latches onto the chassis body, and the loop drops into `ui.isStarted() && car.applyInput → step → car.syncMeshes → cameraRig.update`. OrbitControls is owned by the camera rig and only active in free-camera mode.
+
+This is the MVP. Drivable car + procedural playground + 4 cameras + landing screen, all live at https://vasiwe98.github.io/drive-sim/. Total elapsed time well under the 8-hour budget. Stretch goals (settings menu, mobile touch) still on the table.
+
+[LINKEDIN] The full MVP — driving simulation with realistic physics, a procedurally-generated playground with ramps and a bridge, 4 camera modes, a polished landing screen — is ~600 lines of source across 8 files. The 2014 version, by comparison, was a multi-week Blender project across dozens of .blend files plus Python scripts.
