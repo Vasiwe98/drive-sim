@@ -47,7 +47,7 @@ hud.style.cssText = `
   min-width: 130px; text-align: right;
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 `
-hud.innerHTML = `<div id="hud-camera">camera: follow</div><div id="hud-speed">0 km/h</div><div style="margin-top:4px;opacity:0.6;font-size:10px;">ESC: menu · C: camera</div>`
+hud.innerHTML = `<div id="hud-camera">camera: follow</div><div id="hud-speed">0 km/h</div><div style="margin-top:4px;opacity:0.6;font-size:10px;">ESC: menu · C: camera</div><div style="margin-top:2px;opacity:0.35;font-size:9px;">build ${__BUILD_TIME__}</div>`
 document.body.appendChild(hud)
 
 const hudCamera = hud.querySelector('#hud-camera')

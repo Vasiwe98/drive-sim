@@ -6,4 +6,7 @@ export default defineConfig({
   server: {
     host: true,
   },
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
 })
