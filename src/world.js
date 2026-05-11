@@ -1,5 +1,6 @@
-// Procedural arcade playground: roads (visual only), drivable ramps,
-// a bridge with supports and approach ramps, jump pads, invisible boundary.
+// Procedural arcade playground: roads (visual only), drivable ramps
+// (visual + scripted via rampController), a bridge with supports and
+// approach ramps, jump pads, invisible boundary walls.
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 
@@ -12,8 +13,7 @@ const COLOR_PAD = 0xff4d3a
 
 const ARENA_SIZE = 200
 
-// Add a box to both physics and scene. `physics: false` makes it visual-only
-// (good for thin road overlays — wheels would otherwise trip on the edges).
+// Add a box to physics + scene. `physics: false` makes it visual-only.
 export function addStaticBox(world, scene, pos, size, rot = null, color = null, physics = true) {
   let body = null
   if (physics) {
@@ -34,60 +34,100 @@ export function addStaticBox(world, scene, pos, size, rot = null, color = null, 
       const e = new THREE.Euler(rot.x || 0, rot.y || 0, rot.z || 0, 'XYZ')
       mesh.quaternion.setFromEuler(e)
     }
-    mesh.castShadow = physics // visual-only road overlays don't cast shadow
+    mesh.castShadow = physics
     mesh.receiveShadow = true
     scene.add(mesh)
   }
   return { body, mesh }
 }
 
-// Build a drivable ramp from lowEnd to highEnd (both top-surface center
-// points). Chassis passes THROUGH the ramp collider (collisionResponse=false)
-// while wheel raycasts still hit the top surface — so wheels lift the car
-// up the slope cleanly, without the chassis ever wedging into the ramp.
-function buildRampZ(world, scene, lowEnd, highEnd, opts = {}) {
-  const { width = 10, thickness = 0.4, color = COLOR_RAMP } = opts
-  const dy = highEnd.y - lowEnd.y
-  const dz = highEnd.z - lowEnd.z
-  const slopeLen = Math.sqrt(dy * dy + dz * dz)
+// Build a ramp's VISUAL mesh (a tilted thin box) and return a declarative
+// descriptor that the ramp controller uses to drive the chassis along the
+// slope. Ramps have NO physics body — chassis interaction is handled by
+// rampController.js per frame. This avoids all the wedging/wheel-raycast
+// pathologies of treating tilted boxes as physics colliders.
+//
+// `axis`: 'x' or 'z' — which horizontal axis the ramp climbs along.
+// `low`, `high`: world positions of the two end CENTERS of the top surface.
+// `width`: perpendicular full-extent of the ramp.
+function defineRamp(scene, ramps, opts) {
+  const { axis, low, high, width = 10, thickness = 0.4, color = COLOR_RAMP } = opts
 
-  const rotX = -Math.asin(dy / slopeLen) * Math.sign(dz)
+  const dy = high.y - low.y
+  const dAxis = axis === 'x' ? high.x - low.x : high.z - low.z
+  const slopeLen = Math.sqrt(dy * dy + dAxis * dAxis)
 
-  const tx = (lowEnd.x + highEnd.x) / 2
-  const ty = (lowEnd.y + highEnd.y) / 2
-  const tz = (lowEnd.z + highEnd.z) / 2
+  // Visual mesh: a tilted thin box
+  const mesh = new THREE.Mesh(
+    axis === 'x'
+      ? new THREE.BoxGeometry(slopeLen, thickness, width)
+      : new THREE.BoxGeometry(width, thickness, slopeLen),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05 })
+  )
+  const tx = (low.x + high.x) / 2
+  const ty = (low.y + high.y) / 2
+  const tz = (low.z + high.z) / 2
+  // Slide the box center perpendicular-down by thickness/2 so its TOP face
+  // lies on the (low→high) line.
+  if (axis === 'x') {
+    const cx = tx - (thickness / 2) * (dy / slopeLen) * Math.sign(dAxis)
+    const cy = ty - (thickness / 2) * Math.abs(dAxis) / slopeLen
+    mesh.position.set(cx, cy, tz)
+    mesh.rotation.z = Math.asin(dy / slopeLen) * Math.sign(dAxis)
+  } else {
+    const cy = ty - (thickness / 2) * Math.abs(dAxis) / slopeLen
+    const cz = tz + (thickness / 2) * (dy / slopeLen) * Math.sign(dAxis)
+    mesh.position.set(tx, cy, cz)
+    mesh.rotation.x = -Math.asin(dy / slopeLen) * Math.sign(dAxis)
+  }
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  scene.add(mesh)
 
-  const cy = ty - (thickness / 2) * Math.abs(dz) / slopeLen
-  const cz = tz + (thickness / 2) * (dy / slopeLen) * Math.sign(dz)
+  // Descriptor for the ramp controller
+  const axisLow = axis === 'x' ? low.x : low.z
+  const axisHigh = axis === 'x' ? high.x : high.z
+  const axisMin = Math.min(axisLow, axisHigh)
+  const axisMax = Math.max(axisLow, axisHigh)
+  const perpCenter = axis === 'x' ? low.z : low.x
+  const perpMin = perpCenter - width / 2
+  const perpMax = perpCenter + width / 2
+  const axisSpan = axisHigh - axisLow // signed
+  const pitchAngle = Math.atan2(dy, Math.abs(axisSpan))
 
-  const result = addStaticBox(world, scene, { x: tx, y: cy, z: cz }, { x: width, y: thickness, z: slopeLen }, { x: rotX }, color)
-  return result
+  const ramp = {
+    axis,
+    low: { x: low.x, y: low.y, z: low.z },
+    high: { x: high.x, y: high.y, z: high.z },
+    width,
+    axisMin,
+    axisMax,
+    perpMin,
+    perpMax,
+    pitchAngle,           // absolute slope angle, magnitude
+    axisSign: Math.sign(axisSpan),  // +1 if high is at higher axis coord
+    contains(x, z) {
+      if (axis === 'x') {
+        return x >= axisMin && x <= axisMax && z >= perpMin && z <= perpMax
+      }
+      return z >= axisMin && z <= axisMax && x >= perpMin && x <= perpMax
+    },
+    surfaceYAt(x, z) {
+      const axisCoord = axis === 'x' ? x : z
+      let t = (axisCoord - axisLow) / axisSpan
+      if (t < 0) t = 0
+      else if (t > 1) t = 1
+      return low.y + t * dy
+    },
+    mesh,
+  }
+
+  ramps.push(ramp)
+  return ramp
 }
 
-// Same idea but the ramp varies in X (rotation around Z).
-function buildRampX(world, scene, lowEnd, highEnd, opts = {}) {
-  const { width = 10, thickness = 0.4, color = COLOR_RAMP } = opts
-  const dy = highEnd.y - lowEnd.y
-  const dx = highEnd.x - lowEnd.x
-  const slopeLen = Math.sqrt(dy * dy + dx * dx)
-
-  const rotZ = Math.asin(dy / slopeLen) * Math.sign(dx)
-
-  const tx = (lowEnd.x + highEnd.x) / 2
-  const ty = (lowEnd.y + highEnd.y) / 2
-  const tz = (lowEnd.z + highEnd.z) / 2
-
-  const cx = tx - (thickness / 2) * (dy / slopeLen) * Math.sign(dx)
-  const cy = ty - (thickness / 2) * Math.abs(dx) / slopeLen
-
-  const result = addStaticBox(world, scene, { x: cx, y: cy, z: tz }, { x: slopeLen, y: thickness, z: width }, { z: rotZ }, color)
-  return result
-}
-
-// Invisible launch zone — sensor box that fires an upward impulse on the
-// chassis when it passes through. Impulse magnitude scales with the
-// chassis's horizontal speed, so fast approaches produce dramatic launches.
-// Used at the top of the featured launch ramp.
+// Invisible launch zone — sensor that fires an upward impulse on the chassis
+// when it passes through. Impulse scales with horizontal speed.
 function addLaunchZone(world, pos, opts = {}) {
   const { sizeX = 3, sizeY = 2, sizeZ = 8, impulsePerSpeed = 110, cooldownMs = 1200 } = opts
   const sensor = new CANNON.Body({
@@ -112,7 +152,7 @@ function addLaunchZone(world, pos, opts = {}) {
   })
 }
 
-// Decorative pad + collision sensor that launches the car upward on touch.
+// Decorative pad + sensor that launches the car upward on touch.
 function addJumpPad(world, scene, pos) {
   const plateGeom = new THREE.BoxGeometry(5, 0.15, 5)
   const plateMat = new THREE.MeshStandardMaterial({
@@ -145,30 +185,65 @@ function addJumpPad(world, scene, pos) {
 }
 
 export function buildWorld(scene, world) {
-  // --- Roads (VISUAL ONLY — physics: false avoids wheel-tripping on the edges).
-  //     The car drives on the underlying ground plane (y=0) everywhere.
+  const ramps = []
+
+  // --- Roads (VISUAL ONLY)
   addStaticBox(world, scene, { x: 0, y: 0.05, z: 0 }, { x: 8, y: 0.1, z: 180 }, null, COLOR_ASPHALT, false)
   addStaticBox(world, scene, { x: 0, y: 0.06, z: 0 }, { x: 180, y: 0.1, z: 8 }, null, COLOR_LANE, false)
   addStaticBox(world, scene, { x: 40, y: 0.05, z: -30 }, { x: 80, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
   addStaticBox(world, scene, { x: -40, y: 0.05, z: 40 }, { x: 60, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
 
-  // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X direction).
-  //     ~9° slope so suspension can hold all 4 wheels in contact while climbing.
-  //     A launch-zone sensor at the top gives an upward impulse that scales
-  //     with horizontal speed → fast approaches launch you high.
-  buildRampX(world, scene, { x: 14, y: 0.05, z: 0 }, { x: 32, y: 3, z: 0 }, { width: 14, color: 0xd92e2e })
-  addLaunchZone(world, { x: 33, y: 4, z: 0 }, { impulsePerSpeed: 130 })
+  // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X). Scripted ramp.
+  defineRamp(scene, ramps, {
+    axis: 'x',
+    low: { x: 14, y: 0.05, z: 0 },
+    high: { x: 32, y: 3, z: 0 },
+    width: 14,
+    color: 0xd92e2e,
+  })
+  addLaunchZone(world, { x: 33.5, y: 3.5, z: 0 }, { impulsePerSpeed: 130 })
 
-  // --- Other ramps (also gentle so they're drivable end-to-end)
-  buildRampZ(world, scene, { x: 30, y: 0.05, z: 14 }, { x: 30, y: 3, z: 32 })
-  buildRampZ(world, scene, { x: -32, y: 0.05, z: -14 }, { x: -32, y: 3, z: -32 })
-  buildRampX(world, scene, { x: 48, y: 0.05, z: -55 }, { x: 70, y: 3.5, z: -55 })
-  buildRampX(world, scene, { x: -70, y: 3.5, z: 55 }, { x: -48, y: 0.05, z: 55 })
+  // --- Other ramps (all scripted)
+  defineRamp(scene, ramps, {
+    axis: 'z',
+    low: { x: 30, y: 0.05, z: 14 },
+    high: { x: 30, y: 3, z: 32 },
+    width: 10,
+  })
+  defineRamp(scene, ramps, {
+    axis: 'z',
+    low: { x: -32, y: 0.05, z: -14 },
+    high: { x: -32, y: 3, z: -32 },
+    width: 10,
+  })
+  defineRamp(scene, ramps, {
+    axis: 'x',
+    low: { x: 48, y: 0.05, z: -55 },
+    high: { x: 70, y: 3.5, z: -55 },
+    width: 10,
+  })
+  defineRamp(scene, ramps, {
+    axis: 'x',
+    low: { x: -48, y: 0.05, z: 55 },
+    high: { x: -70, y: 3.5, z: 55 },
+    width: 10,
+  })
 
-  // --- Bridge: deck lowered to y=3 so approach ramps stay drivable at gentle angles.
+  // --- Bridge: deck stays a normal physics collider (flat surfaces work
+  //     fine in cannon). The two approach ramps are scripted.
   addStaticBox(world, scene, { x: 0, y: 3, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
-  buildRampZ(world, scene, { x: 0, y: 0.05, z: -33 }, { x: 0, y: 3, z: -55 }, { width: 10 })
-  buildRampZ(world, scene, { x: 0, y: 0.05, z: -107 }, { x: 0, y: 3, z: -85 }, { width: 10 })
+  defineRamp(scene, ramps, {
+    axis: 'z',
+    low: { x: 0, y: 0.05, z: -33 },
+    high: { x: 0, y: 3, z: -55 },
+    width: 10,
+  })
+  defineRamp(scene, ramps, {
+    axis: 'z',
+    low: { x: 0, y: 0.05, z: -107 },
+    high: { x: 0, y: 3, z: -85 },
+    width: 10,
+  })
   addStaticBox(world, scene, { x: -4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
   addStaticBox(world, scene, { x: 4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
   addStaticBox(world, scene, { x: -4, y: 1.5, z: -80 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
@@ -180,9 +255,7 @@ export function buildWorld(scene, world) {
   addJumpPad(world, scene, { x: 55, y: 0, z: 0 })
   addJumpPad(world, scene, { x: 0, y: 0, z: 55 })
 
-  // --- Boundary walls. Visible (warm grey) so the player knows where the
-  //     arena ends. Thicker than before (2m) for robust collision. Taller
-  //     (16m) so jumps off ramps can't clear them.
+  // --- Boundary walls (visible, solid)
   const half = ARENA_SIZE / 2
   const wallH = 16
   const wallY = wallH / 2
@@ -192,7 +265,5 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: 0, y: wallY, z: half }, { x: ARENA_SIZE, y: wallH, z: 2 }, null, wallColor)
   addStaticBox(world, scene, { x: 0, y: wallY, z: -half }, { x: ARENA_SIZE, y: wallH, z: 2 }, null, wallColor)
 
-  // Spawn just above equilibrium height (calculated for thin chassis + wheels
-  // at corners) so there's almost no initial drop and the chassis settles flat.
-  return { spawnPos: new CANNON.Vec3(0, 0.9, 0) }
+  return { spawnPos: new CANNON.Vec3(0, 0.9, 0), ramps }
 }

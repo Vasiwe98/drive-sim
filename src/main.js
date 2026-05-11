@@ -5,6 +5,7 @@ import { createPhysicsWorld } from './physics.js'
 import { createVehicle } from './vehicle.js'
 import { buildWorld } from './world.js'
 import { CameraRig } from './cameras.js'
+import { createRampController } from './rampController.js'
 import { input } from './input.js'
 import { ui, onStop, onStart } from './ui.js'
 import { createDebugPanel, updateDebugPanel } from './debug.js'
@@ -16,14 +17,13 @@ const { world, step } = createPhysicsWorld()
 const useDebugger = new URLSearchParams(location.search).has('debug')
 const cannonDebugger = useDebugger ? new CannonDebugger(scene, world, { color: 0xff00ff }) : null
 
-const { spawnPos } = buildWorld(scene, world)
+const { spawnPos, ramps } = buildWorld(scene, world)
 const car = createVehicle(world, scene, spawnPos)
+const rampController = createRampController(car, ramps, input)
 
 const cameraRig = new CameraRig(camera, controls)
 cameraRig.setTarget(car.chassisBody)
 
-// Always-on debug panel — left side — so we can diagnose live state.
-// Hide later by passing false / making conditional once driving works.
 createDebugPanel(true)
 
 function resetCar() {
@@ -31,17 +31,17 @@ function resetCar() {
   car.chassisBody.velocity.setZero()
   car.chassisBody.angularVelocity.setZero()
   car.chassisBody.quaternion.set(0, 0, 0, 1)
-  // Reset wheel angular state too
   for (const w of car.vehicle.wheelInfos) {
     w.steering = 0
     w.rotation = 0
     w.brake = 0
     w.engineForce = 0
   }
+  car.setSuspendVehicleControl(false)
 }
 
 onStop(resetCar)
-onStart(resetCar) // any pre-Start drift is wiped before the user takes control
+onStart(resetCar)
 
 let lastMode = -1
 const clock = new THREE.Clock()
@@ -49,10 +49,19 @@ const clock = new THREE.Clock()
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.1)
 
-  if (ui.isStarted()) car.applyInput(input)
-  car.stabilize() // anti-flip torque before the step
+  // Order matters:
+  // 1. Ramp controller updates first: figures out if we're on a ramp,
+  //    sets suspendVehicleControl, and applies direct chassis forces.
+  // 2. applyInput respects suspendVehicleControl (zeros wheel forces while
+  //    on a ramp so cannon's suspension doesn't fight the controller).
+  // 3. Physics step.
+  // 4. Sync visual meshes (wheel meshes may be overridden by ramp surface).
+  if (ui.isStarted()) {
+    rampController.update(dt)
+    car.applyInput(input)
+  }
   step(dt)
-  car.syncMeshes()
+  car.syncMeshes(rampController.getOverride())
   cameraRig.update(dt)
 
   if (cameraRig.mode !== lastMode) {

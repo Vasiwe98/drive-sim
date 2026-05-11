@@ -1,41 +1,43 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
 
-// Tuned for smooth arcade feel.
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 2200  // moderate — high values create pitch torque that flips the car
-const REVERSE_FORCE = -1000    // negative = -X = backward
+const MAX_ENGINE_FORCE = 2200
+const REVERSE_FORCE = -1000
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-// Chassis collider is offset upward by 0.5m in chassis local frame
-// (see addShape call below) so it sits at cabin height — well above
-// any ramp's leading edge. The chassis can't wedge into a ramp from
-// below because the collider is too high to ever reach a ramp's low
-// end. Wheels still raycast straight down from chassis local y=-0.15.
+// Chassis collider sits at cabin level (offset upward in chassis local frame).
 const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
-const WHEEL_RADIUS = 0.5
+export const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
+
+// Wheel mount positions in chassis local frame. Exposed so the ramp
+// controller can override wheel mesh positions to sit on ramp surfaces.
+export const WHEEL_MOUNTS = [
+  new CANNON.Vec3(1.65, -0.15, 0.95),   // 0 = FL (front-left)
+  new CANNON.Vec3(1.65, -0.15, -0.95),  // 1 = FR
+  new CANNON.Vec3(-1.65, -0.15, 0.95),  // 2 = RL
+  new CANNON.Vec3(-1.65, -0.15, -0.95), // 3 = RR
+]
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
-  // Offset the collider 0.5m UP from the body origin (which is at wheel
-  // level). The collider ends up at cabin height — high enough to bump
-  // walls but always above ramp leading edges, so the chassis can never
-  // wedge into a ramp from below.
+  // Collider offset 0.5m up so it sits at cabin level — well above any
+  // ramp's leading edge. Wheels hang at chassis local y=-0.15 and raycast
+  // freely down through empty space.
   chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0))
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Pitch UNLOCKED so the chassis can tilt naturally going up ramps — this
-  // keeps all 4 wheels engaged on the slope, no wedging. Roll LOCKED so
-  // the car can't tip sideways. Active stabilizer (stabilizeChassis below)
-  // prevents pitch from running away into a flip on flat-ground acceleration.
-  chassisBody.angularFactor.set(1, 1, 0)
-  chassisBody.angularDamping = 0.5
+  // Lock pitch + roll. Only yaw allowed (for steering). The chassis stays
+  // visually horizontal — ramps are handled by rampController.js which
+  // drives the chassis Y position directly when the car is in a ramp zone.
+  chassisBody.angularFactor.set(0, 1, 0)
+  chassisBody.angularDamping = 0.3
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -51,8 +53,8 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     suspensionStiffness: 40,
     suspensionRestLength: 0.3,
     frictionSlip: 2.5,
-    dampingRelaxation: 5,     // bumped from 2.3 — faster settle, less landing oscillation
-    dampingCompression: 8,    // bumped from 4.4
+    dampingRelaxation: 5,
+    dampingCompression: 8,
     maxSuspensionForce: 100000,
     rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
@@ -62,20 +64,14 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     useCustomSlidingRotationalSpeed: true,
   }
 
-  // Wheels mounted at corners just below the (thin) chassis collider.
-  // Indices 0=FL, 1=FR, 2=RL, 3=RR. +X = forward (front wheels = +X).
-  wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, 0.95)
-  vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, -0.95)
-  vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, 0.95)
-  vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, -0.95)
-  vehicle.addWheel(wheelOptions)
+  for (const mount of WHEEL_MOUNTS) {
+    wheelOptions.chassisConnectionPointLocal.copy(mount)
+    vehicle.addWheel(wheelOptions)
+  }
 
   vehicle.addToWorld(world)
 
-  // --- Visuals
+  // --- Visuals ---
   const chassisGroup = new THREE.Group()
   scene.add(chassisGroup)
 
@@ -83,9 +79,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
 
-  // Hood at +X (front). Trunk at -X (back). Cabin shifted slightly toward
-  // the front (+X) since most cars have the cabin biased toward the rear
-  // of the engine bay.
   const hood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.95), bodyMat)
   hood.position.set(1.3, 0.0, 0)
   hood.castShadow = true
@@ -113,7 +106,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   sideWin2.position.z = -0.9
   chassisGroup.add(sideWin2)
 
-  // Windshield at the front (+X end of cabin), rear window at -X end.
   const frontWin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 1.65), glassMat)
   frontWin.position.set(1.16, 0.7, 0)
   chassisGroup.add(frontWin)
@@ -126,7 +118,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   roof.castShadow = true
   chassisGroup.add(roof)
 
-  // Bumpers — front (+X), rear (-X).
   const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), trimMat)
   frontBumper.position.set(2.0, -0.15, 0)
   frontBumper.castShadow = true
@@ -136,7 +127,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   rearBumper.position.x = -2.0
   chassisGroup.add(rearBumper)
 
-  // Headlights face the +X direction (front).
   const headlightGeo = new THREE.SphereGeometry(0.18, 16, 10)
   const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
   for (const z of [-0.7, 0.7]) {
@@ -145,7 +135,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     chassisGroup.add(hl)
   }
 
-  // Taillights at the back (-X), red.
   const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
   for (const z of [-0.7, 0.7]) {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), taillightMat)
@@ -153,8 +142,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     chassisGroup.add(tl)
   }
 
-  // Wheels: pre-rotate CylinderGeometry so its (Y) axis aligns with the
-  // cannon wheel's local axle direction (Z, because axleLocal=(0,0,1)).
+  // Wheel meshes
   const wheelMeshes = []
   const tireGeo = new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_WIDTH, 28)
   tireGeo.rotateX(Math.PI / 2)
@@ -181,8 +169,22 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     wheelMeshes.push(w)
   }
 
+  // suspendVehicleControl: when true, applyInput zeroes wheel forces so
+  // the ramp controller's direct chassis force isn't fought by suspension.
+  let suspendVehicleControl = false
+  function setSuspendVehicleControl(v) { suspendVehicleControl = v }
+
   function applyInput(inputState) {
-    // +X = forward, so W gives positive engine force.
+    if (suspendVehicleControl) {
+      // Zero out wheel state so cannon doesn't apply residual forces.
+      for (let i = 0; i < 4; i++) {
+        vehicle.applyEngineForce(0, i)
+        vehicle.setSteeringValue(0, i)
+        vehicle.setBrake(0, i)
+      }
+      return
+    }
+
     const engineForce = inputState.forward
       ? MAX_ENGINE_FORCE
       : inputState.backward
@@ -191,11 +193,8 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
     const steer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
 
-    // Engine force on rear wheels (indices 2,3 are at -X = rear).
     vehicle.applyEngineForce(engineForce, 2)
     vehicle.applyEngineForce(engineForce, 3)
-
-    // Steering on front wheels (indices 0,1 at +X = front).
     vehicle.setSteeringValue(steer, 0)
     vehicle.setSteeringValue(steer, 1)
 
@@ -203,15 +202,30 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     for (let i = 0; i < 4; i++) vehicle.setBrake(brake, i)
   }
 
-  function syncMeshes() {
+  // Scratch vectors for ramp wheel placement
+  const _wheelWorldMount = new CANNON.Vec3()
+
+  function syncMeshes(rampOverride = null) {
     chassisGroup.position.copy(chassisBody.position)
     chassisGroup.quaternion.copy(chassisBody.quaternion)
 
     for (let i = 0; i < vehicle.wheelInfos.length; i++) {
       vehicle.updateWheelTransform(i)
       const t = vehicle.wheelInfos[i].worldTransform
+      // Default: physics-determined position
       wheelMeshes[i].position.copy(t.position)
       wheelMeshes[i].quaternion.copy(t.quaternion)
+
+      // Override Y when on a ramp: place wheel on the ramp surface.
+      if (rampOverride && rampOverride.blendT > 0) {
+        chassisBody.pointToWorldFrame(WHEEL_MOUNTS[i], _wheelWorldMount)
+        const surfY = rampOverride.ramp.surfaceYAt(_wheelWorldMount.x, _wheelWorldMount.z)
+        const targetY = surfY + WHEEL_RADIUS
+        const blend = rampOverride.blendT
+        wheelMeshes[i].position.x = _wheelWorldMount.x
+        wheelMeshes[i].position.y = t.position.y * (1 - blend) + targetY * blend
+        wheelMeshes[i].position.z = _wheelWorldMount.z
+      }
     }
   }
 
@@ -225,31 +239,15 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     return speedMs * 3.6
   }
 
-  // Active stabilizer: per-frame torque + velocity damping to prevent flips
-  // while allowing natural ramp pitch. Apply restoring torque proportional to
-  // how far the chassis's up vector deviates from world up.
-  const _worldUp = new CANNON.Vec3(0, 1, 0)
-  const _localUp = new CANNON.Vec3(0, 1, 0)
-  const _chassisUpWorld = new CANNON.Vec3()
-  const _restoreAxis = new CANNON.Vec3()
-  const _torqueScratch = new CANNON.Vec3()
-  function stabilize() {
-    chassisBody.vectorToWorldFrame(_localUp, _chassisUpWorld)
-    // axis along which to rotate chassis-up back to world-up
-    _chassisUpWorld.cross(_worldUp, _restoreAxis)
-    // magnitude of cross = sin(angle between vectors). Small for upright, large for tilted.
-    const tiltMag = _restoreAxis.length()
-    // Cap the angular velocity to prevent runaway spin
-    const av = chassisBody.angularVelocity
-    const maxRate = 2.5
-    if (Math.abs(av.x) > maxRate) av.x = Math.sign(av.x) * maxRate
-    if (Math.abs(av.z) > maxRate) av.z = Math.sign(av.z) * maxRate
-    if (tiltMag < 1e-4) return
-    // Restoring torque magnitude: grows with tilt so big leans get strong correction
-    const k = 60 + 200 * tiltMag * tiltMag
-    _restoreAxis.scale(k, _torqueScratch)
-    chassisBody.applyTorque(_torqueScratch)
+  return {
+    chassisBody,
+    vehicle,
+    chassisGroup,
+    wheelMeshes,
+    applyInput,
+    syncMeshes,
+    setColor,
+    getSpeedKmh,
+    setSuspendVehicleControl,
   }
-
-  return { chassisBody, vehicle, chassisGroup, wheelMeshes, applyInput, syncMeshes, setColor, getSpeedKmh, stabilize }
 }
