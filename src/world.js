@@ -51,7 +51,7 @@ export function addStaticBox(world, scene, pos, size, rot = null, color = null, 
 // `low`, `high`: world positions of the two end CENTERS of the top surface.
 // `width`: perpendicular full-extent of the ramp.
 function defineRamp(scene, ramps, opts) {
-  const { axis, low, high, width = 10, thickness = 0.4, color = COLOR_RAMP } = opts
+  const { axis, low, high, width = 10, thickness = 0.4, color = COLOR_RAMP, extendHigh = 0 } = opts
 
   const dy = high.y - low.y
   const dAxis = axis === 'x' ? high.x - low.x : high.z - low.z
@@ -87,8 +87,15 @@ function defineRamp(scene, ramps, opts) {
   // Descriptor for the ramp controller
   const axisLow = axis === 'x' ? low.x : low.z
   const axisHigh = axis === 'x' ? high.x : high.z
-  const axisMin = Math.min(axisLow, axisHigh)
-  const axisMax = Math.max(axisLow, axisHigh)
+  let axisMin = Math.min(axisLow, axisHigh)
+  let axisMax = Math.max(axisLow, axisHigh)
+  // Optional footprint extension past the HIGH end of the ramp. Used where
+  // a ramp meets an elevated platform (e.g. bridge deck) so the controller
+  // stays engaged until all wheels have crossed onto the platform.
+  if (extendHigh) {
+    if (axisHigh > axisLow) axisMax += extendHigh
+    else axisMin -= extendHigh
+  }
   const perpCenter = axis === 'x' ? low.z : low.x
   const perpMin = perpCenter - width / 2
   const perpMax = perpCenter + width / 2
@@ -234,17 +241,25 @@ export function buildWorld(scene, world) {
   // --- Bridge: deck stays a normal physics collider (flat surfaces work
   //     fine in cannon). The two approach ramps are scripted.
   addStaticBox(world, scene, { x: 0, y: 3, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
+  // Bridge approach ramps. high.y matches the deck TOP (3.25 = deck center
+  // 3 + halfExtents.y 0.25) so the chassis is delivered flush with the deck
+  // surface, not 0.25m short. extendHigh keeps the controller engaged for
+  // 2.5m past the visible top so the rear wheels (1.65m behind chassis
+  // center) don't dangle in the no-physics gap between the ramp visual and
+  // the deck physics body.
   defineRamp(scene, ramps, {
     axis: 'z',
     low: { x: 0, y: 0.05, z: -33 },
-    high: { x: 0, y: 3, z: -55 },
+    high: { x: 0, y: 3.25, z: -55 },
     width: 10,
+    extendHigh: 2.5,
   })
   defineRamp(scene, ramps, {
     axis: 'z',
     low: { x: 0, y: 0.05, z: -107 },
-    high: { x: 0, y: 3, z: -85 },
+    high: { x: 0, y: 3.25, z: -85 },
     width: 10,
+    extendHigh: 2.5,
   })
   addStaticBox(world, scene, { x: -4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
   addStaticBox(world, scene, { x: 4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
