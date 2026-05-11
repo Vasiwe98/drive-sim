@@ -30,13 +30,12 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Lock PITCH and ROLL — only yaw is allowed (for steering).
-  // Pitch was unlocking the car flipping bug. Without pitch, the chassis
-  // stays horizontal — but the car can still launch off ramps because the
-  // suspension lifts the chassis vertically as wheels climb the slope.
-  // Less visual drama on the climb, but rock-solid stability.
-  chassisBody.angularFactor.set(0, 1, 0)
-  chassisBody.angularDamping = 0.4
+  // Pitch UNLOCKED so the chassis can tilt naturally going up ramps — this
+  // keeps all 4 wheels engaged on the slope, no wedging. Roll LOCKED so
+  // the car can't tip sideways. Active stabilizer (stabilizeChassis below)
+  // prevents pitch from running away into a flip on flat-ground acceleration.
+  chassisBody.angularFactor.set(1, 1, 0)
+  chassisBody.angularDamping = 0.5
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -226,5 +225,31 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     return speedMs * 3.6
   }
 
-  return { chassisBody, vehicle, chassisGroup, wheelMeshes, applyInput, syncMeshes, setColor, getSpeedKmh }
+  // Active stabilizer: per-frame torque + velocity damping to prevent flips
+  // while allowing natural ramp pitch. Apply restoring torque proportional to
+  // how far the chassis's up vector deviates from world up.
+  const _worldUp = new CANNON.Vec3(0, 1, 0)
+  const _localUp = new CANNON.Vec3(0, 1, 0)
+  const _chassisUpWorld = new CANNON.Vec3()
+  const _restoreAxis = new CANNON.Vec3()
+  const _torqueScratch = new CANNON.Vec3()
+  function stabilize() {
+    chassisBody.vectorToWorldFrame(_localUp, _chassisUpWorld)
+    // axis along which to rotate chassis-up back to world-up
+    _chassisUpWorld.cross(_worldUp, _restoreAxis)
+    // magnitude of cross = sin(angle between vectors). Small for upright, large for tilted.
+    const tiltMag = _restoreAxis.length()
+    // Cap the angular velocity to prevent runaway spin
+    const av = chassisBody.angularVelocity
+    const maxRate = 2.5
+    if (Math.abs(av.x) > maxRate) av.x = Math.sign(av.x) * maxRate
+    if (Math.abs(av.z) > maxRate) av.z = Math.sign(av.z) * maxRate
+    if (tiltMag < 1e-4) return
+    // Restoring torque magnitude: grows with tilt so big leans get strong correction
+    const k = 60 + 200 * tiltMag * tiltMag
+    _restoreAxis.scale(k, _torqueScratch)
+    chassisBody.applyTorque(_torqueScratch)
+  }
+
+  return { chassisBody, vehicle, chassisGroup, wheelMeshes, applyInput, syncMeshes, setColor, getSpeedKmh, stabilize }
 }

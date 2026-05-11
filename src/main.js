@@ -50,6 +50,7 @@ function loop() {
   const dt = Math.min(clock.getDelta(), 0.1)
 
   if (ui.isStarted()) car.applyInput(input)
+  car.stabilize() // anti-flip torque before the step
   step(dt)
   car.syncMeshes()
   cameraRig.update(dt)
