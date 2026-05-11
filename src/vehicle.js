@@ -10,13 +10,13 @@ const REVERSE_FORCE = -1200    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-// Visual chassis is 4m x 1m x 2m (hood + cabin + trunk). The PHYSICS
-// collider is intentionally much smaller — a small block in the cabin
-// area only. The wheels (raycasts mounted at the four visual corners)
-// carry the ground contact. With a small chassis box, even big tilts
-// can't punch the chassis through the ground. The chassis still has
-// enough size to bump into walls and ramps.
-const CHASSIS_HALF = { x: 1.2, y: 0.25, z: 0.7 }
+// Chassis collider matches the visual silhouette so it bumps walls/ramps
+// reliably. Pitch & roll rotation is locked separately (via angularFactor)
+// so even if the chassis would otherwise tilt, it stays upright. That
+// guarantees the four wheel raycasts always point straight down and make
+// solid ground contact — eliminates the class of bugs where the chassis
+// tipped onto a corner and lifted wheels off the floor.
+const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
@@ -26,7 +26,11 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
-  chassisBody.allowSleep = false // wheels-not-in-contact at spawn can let the chassis sleep before suspension catches
+  chassisBody.allowSleep = false
+  // LOCK pitch & roll — only allow yaw (Y-axis rotation) so the car can steer
+  // but can never tip over. arcade-game convention; bulletproof against the
+  // "chassis lands on its side" class of bugs we kept hitting.
+  chassisBody.angularFactor.set(0, 1, 0)
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
