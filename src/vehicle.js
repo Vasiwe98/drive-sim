@@ -24,12 +24,15 @@ const WHEEL_WIDTH = 0.35
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
-  chassisBody.addShape(chassisShape) // no offset — body origin = box center
+  chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Lock pitch & roll — only allow yaw for steering.
-  chassisBody.angularFactor.set(0, 1, 0)
+  // Pitch and roll are UNLOCKED (default angularFactor) so the chassis tilts
+  // naturally going up ramps — the car arcs through the air on jumps instead
+  // of staying horizontal. Moderate angularDamping keeps it from flipping
+  // wildly on bad landings.
+  chassisBody.angularDamping = 0.4
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
