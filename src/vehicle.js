@@ -3,11 +3,20 @@ import * as THREE from 'three'
 
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
+//
+// Tuning target: Porsche 911 (992 Carrera S).
+//   mass 1500 kg, 0-100 km/h ~3.5s, top speed ~310 km/h, high tire grip.
+//   At F=13000N / m=1500kg average accel ≈ 8.7 m/s² → 0-100 km/h ≈ 3.2s.
+//   Top speed at equilibrium: F_engine = m * linearDamping * v
+//      → v_top = 13000 / (1500 * 0.10) = 87 m/s ≈ 313 km/h.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 2200
-const REVERSE_FORCE = -1000
-const HANDBRAKE_FORCE = 1000000
-const ROLLING_BRAKE = 4
+const MAX_ENGINE_FORCE = 13000
+const REVERSE_FORCE = -6000
+const HANDBRAKE_FORCE = 50000
+const ROLLING_BRAKE = 20
+// Steering reduces at high speed for stability (real cars + Porsche-like).
+const STEER_HIGH_SPEED_KMH = 220   // above this, steering scales down hard
+const STEER_MIN_FACTOR = 0.3
 
 // Chassis collider sits at cabin level (offset upward in chassis local frame).
 const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
@@ -25,7 +34,7 @@ export const WHEEL_MOUNTS = [
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
-  const chassisBody = new CANNON.Body({ mass: 220 })
+  const chassisBody = new CANNON.Body({ mass: 1500 }) // Porsche-like mass
   // Collider offset 0.5m up so it sits at cabin level — well above any
   // ramp's leading edge. Wheels hang at chassis local y=-0.15 and raycast
   // freely down through empty space.
@@ -33,11 +42,12 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Lock pitch + roll. Only yaw allowed (for steering). The chassis stays
-  // visually horizontal — ramps are handled by rampController.js which
-  // drives the chassis Y position directly when the car is in a ramp zone.
+  // Lock pitch + roll. Only yaw allowed (for steering).
   chassisBody.angularFactor.set(0, 1, 0)
   chassisBody.angularDamping = 0.3
+  // linearDamping doubles as our air-resistance proxy. With mass 1500 and
+  // engine 13000N, this sets the top speed (~87 m/s ≈ 310 km/h).
+  chassisBody.linearDamping = 0.10
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -47,15 +57,20 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     indexUpAxis: 1,
   })
 
+  // Wheel params tuned for a 1500 kg sports car. Stiffness * compression *
+  // mass = quarter-weight → equilibrium compression is independent of mass
+  // (stays around 6 cm at stiffness 40), so the same stiffness works.
+  // Damping and maxSuspensionForce scale up for the heavier load.
+  // frictionSlip = 6 gives Porsche-like high-grip tire behaviour.
   const wheelOptions = {
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
     suspensionStiffness: 40,
     suspensionRestLength: 0.3,
-    frictionSlip: 2.5,
-    dampingRelaxation: 5,
-    dampingCompression: 8,
-    maxSuspensionForce: 100000,
+    frictionSlip: 6,
+    dampingRelaxation: 9,
+    dampingCompression: 14,
+    maxSuspensionForce: 500000,
     rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
     chassisConnectionPointLocal: new CANNON.Vec3(),
@@ -176,7 +191,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   function applyInput(inputState) {
     if (suspendVehicleControl) {
-      // Zero out wheel state so cannon doesn't apply residual forces.
       for (let i = 0; i < 4; i++) {
         vehicle.applyEngineForce(0, i)
         vehicle.setSteeringValue(0, i)
@@ -191,7 +205,14 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
         ? REVERSE_FORCE
         : 0
 
-    const steer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
+    // Speed-sensitive steering: less wheel turn at high speed = stable.
+    const speedKmh = getSpeedKmh()
+    const steerFactor = Math.max(
+      STEER_MIN_FACTOR,
+      1 - speedKmh / STEER_HIGH_SPEED_KMH * (1 - STEER_MIN_FACTOR)
+    )
+    const rawSteer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
+    const steer = rawSteer * steerFactor
 
     vehicle.applyEngineForce(engineForce, 2)
     vehicle.applyEngineForce(engineForce, 3)

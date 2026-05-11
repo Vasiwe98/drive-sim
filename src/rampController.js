@@ -10,12 +10,13 @@ import * as CANNON from 'cannon-es'
 
 const BLEND_IN_SEC = 0.20
 const BLEND_OUT_SEC = 0.30
-const FOLLOW_RATE = 18         // exponential follow toward target Y
-const ENTER_GATE = 1.5         // max vertical distance from ramp surface to "enter"
-const RIDE_HEIGHT = 0.85       // chassis center Y above ramp surface when "on" the ramp
-const RAMP_ENGINE_FORCE = 2800 // direct force applied to chassis while on ramp
-const RAMP_REVERSE_FORCE = -1400
-const MAX_YAW_RATE = 1.6       // rad/s, direct yaw control while on ramp
+const FOLLOW_RATE = 18           // exponential follow toward target Y
+const ENTER_GATE = 1.5           // max vertical distance from ramp surface to "enter"
+const RIDE_HEIGHT = 0.85         // chassis center Y above ramp surface when "on" the ramp
+// Scaled for mass 1500 (Porsche). At F/m=8.7 m/s² these match flat-ground feel.
+const RAMP_ENGINE_FORCE = 13000
+const RAMP_REVERSE_FORCE = -6000
+const MAX_YAW_RATE = 1.4         // rad/s, slightly tamer than flat ground
 
 export function createRampController(car, ramps, input) {
   let activeRamp = null
@@ -74,12 +75,21 @@ export function createRampController(car, ramps, input) {
     const surfY = activeRamp.surfaceYAt(cx, cz)
     const targetY = surfY + RIDE_HEIGHT
     const follow = 1 - Math.exp(-FOLLOW_RATE * dt)
-    // Blend between physics-natural Y and ramp-driven Y based on blendT.
     const newY = cy + (targetY - cy) * follow * blendT
     car.chassisBody.position.y = newY
+
+    // Set chassis vy to the slope's natural rate of climb (= horizontal
+    // velocity along the ramp axis × dy/dAxis). When the car later exits
+    // the ramp footprint, this vy persists and the car arcs into the air
+    // realistically — no artificial impulse needed.
     if (blendT > 0.4) {
-      // Zero vertical velocity so gravity doesn't fight us mid-ramp.
-      car.chassisBody.velocity.y = 0
+      const r = activeRamp
+      const axisHigh = r.axis === 'x' ? r.high.x : r.high.z
+      const axisLow = r.axis === 'x' ? r.low.x : r.low.z
+      const slopeSlope = (r.high.y - r.low.y) / (axisHigh - axisLow)
+      const v = car.chassisBody.velocity
+      const horizontalV = r.axis === 'x' ? v.x : v.z
+      car.chassisBody.velocity.y = horizontalV * slopeSlope
     }
 
     // --- Direct chassis force/yaw while engaged ---

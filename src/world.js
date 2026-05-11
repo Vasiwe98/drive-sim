@@ -193,15 +193,17 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: 40, y: 0.05, z: -30 }, { x: 80, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
   addStaticBox(world, scene, { x: -40, y: 0.05, z: 40 }, { x: 60, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
 
-  // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X). Scripted ramp.
+  // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X). Steeper than
+  //     the others (~14°) so the natural slope-velocity inheritance at the
+  //     top produces a satisfying jump without any artificial impulse.
+  //     At top speed (~85 m/s) this yields vy ≈ 21 m/s → ~22m of air.
   defineRamp(scene, ramps, {
     axis: 'x',
     low: { x: 14, y: 0.05, z: 0 },
-    high: { x: 32, y: 3, z: 0 },
+    high: { x: 30, y: 4, z: 0 },
     width: 14,
     color: 0xd92e2e,
   })
-  addLaunchZone(world, { x: 33.5, y: 3.5, z: 0 }, { impulsePerSpeed: 130 })
 
   // --- Other ramps (all scripted)
   defineRamp(scene, ramps, {
