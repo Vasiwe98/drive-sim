@@ -24,6 +24,15 @@ const MAX_YAW_RATE_FAST = 0.9    // rad/s at top of the speed scale
 const YAW_SPEED_SCALE_MPS = 20   // speed at which yaw factor hits 1.0
 const YAW_MIN_FACTOR = 0.08      // floor so you can still inch around at crawl
 
+// Target world-space yaw (rotation around +Y) so the chassis-forward (+X local)
+// points along the ramp's climbing direction. Our forward convention: chassis
+// +X in world is reached by yaw=0. Rotation around +Y by yaw rotates +X
+// toward +Z, so a yaw of -π/2 makes chassis-forward = +Z.
+function targetYawForRamp(ramp) {
+  if (ramp.axis === 'x') return ramp.axisSign > 0 ? 0 : Math.PI
+  return ramp.axisSign > 0 ? -Math.PI / 2 : Math.PI / 2
+}
+
 export function createRampController(car, ramps, input) {
   let activeRamp = null
   let blendT = 0
@@ -58,9 +67,18 @@ export function createRampController(car, ramps, input) {
     if (bestRamp && !activeRamp) {
       activeRamp = bestRamp
       exiting = false
+      // SNAP chassis yaw to the ramp's axis direction so the chassis starts
+      // perfectly aligned. Without this, any small pre-entry yaw causes
+      // the chassis to drift sideways off the ramp over its length.
+      const yaw = targetYawForRamp(activeRamp)
+      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, yaw)
+      car.chassisBody.angularVelocity.set(0, 0, 0)
     } else if (bestRamp && activeRamp && bestRamp !== activeRamp) {
       activeRamp = bestRamp
       exiting = false
+      const yaw = targetYawForRamp(activeRamp)
+      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, yaw)
+      car.chassisBody.angularVelocity.set(0, 0, 0)
     } else if (!bestRamp && activeRamp) {
       // INSTANT RELEASE on exit. If we fade out over a few hundred ms, the
       // controller keeps pulling the chassis toward the (clamped) ramp Y
@@ -155,18 +173,15 @@ export function createRampController(car, ramps, input) {
       // Zero ALL angular velocity each frame so nothing accumulates.
       car.chassisBody.angularVelocity.set(0, 0, 0)
 
-      // Damp lateral velocity (anything perpendicular to chassis-forward).
-      // Simulates wheel grip — keeps the car from drifting sideways off
-      // the ramp. Forward component is preserved; lateral decays.
-      // _fwdWorld is the unit forward vector (computed above).
+      // ZERO lateral velocity. Project horizontal velocity onto
+      // chassis-forward and discard anything perpendicular. The chassis
+      // can only move in the direction it's currently facing — no
+      // spurious sideways drift is possible. Intentional steering still
+      // works because yaw rotates chassis-forward, and the velocity
+      // projection follows the new forward.
       const fwdDot = v.x * _fwdWorld.x + v.z * _fwdWorld.z
-      const fwdX = _fwdWorld.x * fwdDot
-      const fwdZ = _fwdWorld.z * fwdDot
-      const latX = v.x - fwdX
-      const latZ = v.z - fwdZ
-      const LATERAL_DAMP = 0.85
-      v.x = fwdX + latX * LATERAL_DAMP
-      v.z = fwdZ + latZ * LATERAL_DAMP
+      v.x = _fwdWorld.x * fwdDot
+      v.z = _fwdWorld.z * fwdDot
     } else {
       car.setSuspendVehicleControl(false)
     }
