@@ -113,6 +113,7 @@ function defineRamp(scene, ramps, opts) {
     perpMax,
     pitchAngle,           // absolute slope angle, magnitude
     axisSign: Math.sign(axisSpan),  // +1 if high is at higher axis coord
+    extendHigh,           // ramp controller uses this to suppress launch-vy
     contains(x, z) {
       if (axis === 'x') {
         return x >= axisMin && x <= axisMax && z >= perpMin && z <= perpMax
@@ -248,8 +249,8 @@ export function buildWorld(scene, world) {
   // behind chassis center) are still over the no-physics ramp visual.
   // Without these extensions their raycasts fall through to the ground,
   // suspension fully extends, and the wheels visibly dip below the deck.
-  addStaticBox(world, scene, { x: 0, y: 3, z: -54 }, { x: 10, y: 0.5, z: 2 })
-  addStaticBox(world, scene, { x: 0, y: 3, z: -86 }, { x: 10, y: 0.5, z: 2 })
+  addStaticBox(world, scene, { x: 0, y: 3, z: -54 }, { x: 12, y: 0.5, z: 6 })
+  addStaticBox(world, scene, { x: 0, y: 3, z: -86 }, { x: 12, y: 0.5, z: 6 })
   // Bridge approach ramps. high.y matches the deck TOP (3.25 = deck center
   // 3 + halfExtents.y 0.25) so the chassis is delivered flush with the deck
   // surface, not 0.25m short.

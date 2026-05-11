@@ -105,9 +105,16 @@ export function createRampController(car, ramps, input) {
       // even while the wheels are trying to lift the car to whatever's
       // below — e.g. landing on a bridge deck at a slightly different
       // height. The fight causes the car to get stuck. Releasing
-      // immediately lets gravity + suspension take over cleanly. The
-      // chassis keeps its slope-inherited vy from the last set, so the
-      // hand-off into the air / onto the next surface still looks natural.
+      // immediately lets gravity + suspension take over cleanly.
+      //
+      // For ramps with extendHigh (bridge approach ramps that hand off onto
+      // a flat platform), zero chassis vy so the car coasts onto the deck
+      // instead of launching upward and bouncing on landing. The featured
+      // red launch ramp has no extendHigh, so it keeps the slope-inherited
+      // vy and still produces a satisfying jump.
+      if (activeRamp.extendHigh) {
+        car.chassisBody.velocity.y = 0
+      }
       activeRamp = null
       exiting = false
       blendT = 0
@@ -133,7 +140,12 @@ export function createRampController(car, ramps, input) {
     // velocity along the ramp axis × dy/dAxis). When the car later exits
     // the ramp footprint, this vy persists and the car arcs into the air
     // realistically — no artificial impulse needed.
-    if (blendT > 0.4) {
+    //
+    // Skip this for ramps with extendHigh (bridge approach ramps that
+    // lead onto a flat platform). On those we want a coast hand-off, not
+    // a launch. Inside the extended-engagement zone the actual surface
+    // is flat anyway, so a non-zero vy would be bogus.
+    if (blendT > 0.4 && !activeRamp.extendHigh) {
       const r = activeRamp
       const axisHigh = r.axis === 'x' ? r.high.x : r.high.z
       const axisLow = r.axis === 'x' ? r.low.x : r.low.z

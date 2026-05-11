@@ -2,6 +2,9 @@
 // when the car "doesn't move." Toggled by ?debug=1 in the URL, OR always
 // on if visible: true is passed.
 
+// Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
+const DEPLOY_TAG = '2026-05-11-sink-fix-v2'
+
 let panel = null
 let lastTick = 0
 
@@ -39,6 +42,7 @@ export function updateDebugPanel(car) {
   const suspensionLengths = v.wheelInfos.map(w => w.suspensionLength.toFixed(2))
 
   panel.textContent =
+    `build ${DEPLOY_TAG}\n` +
     `chassis pos  ${b.position.x.toFixed(2)} ${b.position.y.toFixed(2)} ${b.position.z.toFixed(2)}\n` +
     `chassis vel  ${b.velocity.x.toFixed(2)} ${b.velocity.y.toFixed(2)} ${b.velocity.z.toFixed(2)}\n` +
     `wheels in contact ${sumContact}/4   [${inContact.join(' ')}]\n` +
