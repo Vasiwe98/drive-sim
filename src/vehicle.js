@@ -10,11 +10,13 @@ const REVERSE_FORCE = -1200    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-// Visual chassis is ~1m tall, but the physics collider is intentionally
-// thinner so it can't punch through the ground when the car tilts on
-// landings. Visual hood/mid/cabin overlay the silhouette; this is only
-// the collision box.
-const CHASSIS_HALF = { x: 2, y: 0.3, z: 1 }
+// Visual chassis is 4m x 1m x 2m (hood + cabin + trunk). The PHYSICS
+// collider is intentionally much smaller — a small block in the cabin
+// area only. The wheels (raycasts mounted at the four visual corners)
+// carry the ground contact. With a small chassis box, even big tilts
+// can't punch the chassis through the ground. The chassis still has
+// enough size to bump into walls and ramps.
+const CHASSIS_HALF = { x: 1.2, y: 0.25, z: 0.7 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
