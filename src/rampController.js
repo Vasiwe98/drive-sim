@@ -50,23 +50,27 @@ export function createRampController(car, ramps, input) {
       activeRamp = bestRamp
       exiting = false
     } else if (bestRamp && activeRamp && bestRamp !== activeRamp) {
-      // Switched to a different ramp (e.g., a sub-ramp on a bridge approach).
       activeRamp = bestRamp
       exiting = false
     } else if (!bestRamp && activeRamp) {
-      exiting = true
+      // INSTANT RELEASE on exit. If we fade out over a few hundred ms, the
+      // controller keeps pulling the chassis toward the (clamped) ramp Y
+      // even while the wheels are trying to lift the car to whatever's
+      // below — e.g. landing on a bridge deck at a slightly different
+      // height. The fight causes the car to get stuck. Releasing
+      // immediately lets gravity + suspension take over cleanly. The
+      // chassis keeps its slope-inherited vy from the last set, so the
+      // hand-off into the air / onto the next surface still looks natural.
+      activeRamp = null
+      exiting = false
+      blendT = 0
+      car.setSuspendVehicleControl(false)
+      return
     }
 
-    // --- Blend in / out ---
+    // --- Blend in (entry fade only) ---
     if (activeRamp && !exiting) {
       blendT = Math.min(1, blendT + dt / BLEND_IN_SEC)
-    } else {
-      blendT = Math.max(0, blendT - dt / BLEND_OUT_SEC)
-      if (blendT === 0) {
-        activeRamp = null
-        exiting = false
-        car.setSuspendVehicleControl(false)
-      }
     }
 
     if (!activeRamp || blendT <= 0) return
