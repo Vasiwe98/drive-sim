@@ -109,10 +109,19 @@ export const WHEEL_MOUNTS = [
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 1500 }) // Porsche-like mass
-  // Collider offset 0.5m up so it sits at cabin level — well above any
-  // ramp's leading edge. Wheels hang at chassis local y=-0.15 and raycast
-  // freely down through empty space.
-  chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0))
+  // No collider offset. A previous +0.5m offset (to sit at cabin level)
+  // created a "trap zone" at the bridge deck: when the collider rested on
+  // the deck top (chassis_y=3.0 with offset=0.5), the wheel mounts at
+  // chassis_y - 0.15 = 2.85 sat BELOW the deck top (3.25). Wheel raycasts
+  // started inside the deck box, hit the deck UNDERSIDE, returned
+  // hitNormalWorld = (0,-1,0), and the spring force was applied DOWNWARD
+  // — the chassis got pulled into the deck and stuck. With offset=0, the
+  // collider rests at chassis_y=3.5 where wheel mounts (3.35) are above
+  // the deck top, so raycasts hit the top face normally and the spring
+  // force pushes the chassis UP out of the trap. Ramps have no physics
+  // body (controller-driven), so the original "above ramp edge" rationale
+  // for the offset is moot.
+  chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
