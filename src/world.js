@@ -241,6 +241,15 @@ export function buildWorld(scene, world) {
   // --- Bridge: deck stays a normal physics collider (flat surfaces work
   //     fine in cannon). The two approach ramps are scripted.
   addStaticBox(world, scene, { x: 0, y: 3, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
+
+  // Invisible physics-only extensions at both deck edges (same top y as
+  // the deck). The approach ramps have no physics body, so when the
+  // chassis crosses the ramp→deck boundary the trailing wheels (1.65m
+  // behind chassis center) are still over the no-physics ramp visual.
+  // Without these extensions their raycasts fall through to the ground,
+  // suspension fully extends, and the wheels visibly dip below the deck.
+  addStaticBox(world, scene, { x: 0, y: 3, z: -54 }, { x: 10, y: 0.5, z: 2 })
+  addStaticBox(world, scene, { x: 0, y: 3, z: -86 }, { x: 10, y: 0.5, z: 2 })
   // Bridge approach ramps. high.y matches the deck TOP (3.25 = deck center
   // 3 + halfExtents.y 0.25) so the chassis is delivered flush with the deck
   // surface, not 0.25m short.
