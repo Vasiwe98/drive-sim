@@ -18,6 +18,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
+  chassisBody.allowSleep = false // wheels-not-in-contact at spawn can let the chassis sleep before suspension catches
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -31,26 +32,31 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
     suspensionStiffness: 30,
-    suspensionRestLength: 0.35,
-    frictionSlip: 5,        // bumped from 1.4 — wheels grip instead of slipping
+    suspensionRestLength: 0.3,
+    frictionSlip: 2.5,      // 1.4 (cannon example) too slippy; 5 too judder — 2.5 is the middle ground
     dampingRelaxation: 2.3,
     dampingCompression: 4.4,
     maxSuspensionForce: 100000,
     rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
     chassisConnectionPointLocal: new CANNON.Vec3(),
-    maxSuspensionTravel: 0.5,
-    useCustomSlidingRotationalSpeed: false,
+    maxSuspensionTravel: 0.3,
+    customSlidingRotationalSpeed: -30,
+    useCustomSlidingRotationalSpeed: true,
   }
 
-  // Indices 0=FL, 1=FR, 2=RL, 3=RR. -X is forward (cabin/headlights side).
-  wheelOptions.chassisConnectionPointLocal.set(-1, 0, 1)
+  // Wheels mounted BELOW chassis center (y = -0.3) so they extend past the
+  // chassis box (half-height 0.5) and make ground contact themselves — not
+  // the chassis box. Without this, the chassis bottoms out on the plane
+  // before the wheel raycasts can grip and engine force goes nowhere.
+  // Indices 0=FL, 1=FR, 2=RL, 3=RR. -X = forward (headlights/cabin side).
+  wheelOptions.chassisConnectionPointLocal.set(-1, -0.3, 1)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(-1, 0, -1)
+  wheelOptions.chassisConnectionPointLocal.set(-1, -0.3, -1)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(1, 0, 1)
+  wheelOptions.chassisConnectionPointLocal.set(1, -0.3, 1)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(1, 0, -1)
+  wheelOptions.chassisConnectionPointLocal.set(1, -0.3, -1)
   vehicle.addWheel(wheelOptions)
 
   vehicle.addToWorld(world)
