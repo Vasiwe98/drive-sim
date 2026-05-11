@@ -10,30 +10,25 @@ const REVERSE_FORCE = -1200    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-// Chassis collider matches the visual silhouette so it bumps walls/ramps
-// reliably. Pitch & roll rotation is locked separately (via angularFactor)
-// so even if the chassis would otherwise tilt, it stays upright. That
-// guarantees the four wheel raycasts always point straight down and make
-// solid ground contact — eliminates the class of bugs where the chassis
-// tipped onto a corner and lifted wheels off the floor.
-const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
+// Chassis collider is VERY THIN in Y (just 10cm tall) so the wheel
+// mount points (at chassis local y = -0.15) are clearly OUTSIDE
+// the box. This guarantees the wheel raycasts cast through empty
+// space, not through the chassis collider. The box is still long
+// and wide enough to bump walls and ramps reliably. Vertical wall
+// overlap is small but walls are 16m tall — chassis at ~y=0.9
+// always overlaps walls in y.
+const CHASSIS_HALF = { x: 1.9, y: 0.05, z: 0.95 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
-  // Offset the chassis collider UP by 0.5 in chassis local frame, so its
-  // bottom face sits ABOVE the wheel mount points (which are at local y=-0.15).
-  // This way the wheel raycasts originate in empty space below the chassis
-  // box, not inside it. Cannon's wheel-raycast chassis-exclusion was failing
-  // in some configurations and the rays were getting blocked.
-  chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0))
+  chassisBody.addShape(chassisShape) // no offset — body origin = box center
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Belt-and-suspenders: still lock pitch & roll so even if a wheel briefly
-  // loses contact, the chassis stays upright.
+  // Lock pitch & roll — only allow yaw for steering.
   chassisBody.angularFactor.set(0, 1, 0)
   world.addBody(chassisBody)
 
