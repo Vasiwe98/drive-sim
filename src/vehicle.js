@@ -23,13 +23,17 @@ const WHEEL_WIDTH = 0.35
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
-  chassisBody.addShape(chassisShape)
+  // Offset the chassis collider UP by 0.5 in chassis local frame, so its
+  // bottom face sits ABOVE the wheel mount points (which are at local y=-0.15).
+  // This way the wheel raycasts originate in empty space below the chassis
+  // box, not inside it. Cannon's wheel-raycast chassis-exclusion was failing
+  // in some configurations and the rays were getting blocked.
+  chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0))
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // LOCK pitch & roll — only allow yaw (Y-axis rotation) so the car can steer
-  // but can never tip over. arcade-game convention; bulletproof against the
-  // "chassis lands on its side" class of bugs we kept hitting.
+  // Belt-and-suspenders: still lock pitch & roll so even if a wheel briefly
+  // loses contact, the chassis stays upright.
   chassisBody.angularFactor.set(0, 1, 0)
   world.addBody(chassisBody)
 
