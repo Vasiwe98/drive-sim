@@ -1,20 +1,18 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
 
-// Verbatim from cannon-es examples/raycast_vehicle.html — do not invent.
+// Tuned for smooth arcade feel — derived from cannon-es example then adjusted.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 1500
-const REVERSE_FORCE = -700
+const MAX_ENGINE_FORCE = 2500   // bumped from 1500; with frictionSlip=5 we have grip to use it
+const REVERSE_FORCE = -1200
 const HANDBRAKE_FORCE = 1000000
-const ROLLING_BRAKE = 5
+const ROLLING_BRAKE = 4
 
-// Chassis half-extents — physics box matches the visual body footprint.
 const CHASSIS_HALF = { x: 2, y: 0.5, z: 1 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
-  // --- Physics ---
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
   chassisBody.addShape(chassisShape)
@@ -24,29 +22,28 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   const vehicle = new CANNON.RaycastVehicle({
     chassisBody,
-    indexRightAxis: 2,   // Z
-    indexForwardAxis: 0, // X
-    indexUpAxis: 1,      // Y
+    indexRightAxis: 2,
+    indexForwardAxis: 0,
+    indexUpAxis: 1,
   })
 
   const wheelOptions = {
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
     suspensionStiffness: 30,
-    suspensionRestLength: 0.3,
-    frictionSlip: 1.4,
+    suspensionRestLength: 0.35,
+    frictionSlip: 5,        // bumped from 1.4 — wheels grip instead of slipping
     dampingRelaxation: 2.3,
     dampingCompression: 4.4,
     maxSuspensionForce: 100000,
     rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
     chassisConnectionPointLocal: new CANNON.Vec3(),
-    maxSuspensionTravel: 0.3,
-    customSlidingRotationalSpeed: -30,
-    useCustomSlidingRotationalSpeed: true,
+    maxSuspensionTravel: 0.5,
+    useCustomSlidingRotationalSpeed: false,
   }
 
-  // Indices 0=FL, 1=FR, 2=RL, 3=RR. -X = forward (cabin/headlights side).
+  // Indices 0=FL, 1=FR, 2=RL, 3=RR. -X is forward (cabin/headlights side).
   wheelOptions.chassisConnectionPointLocal.set(-1, 0, 1)
   vehicle.addWheel(wheelOptions)
   wheelOptions.chassisConnectionPointLocal.set(-1, 0, -1)
@@ -58,7 +55,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   vehicle.addToWorld(world)
 
-  // --- Visuals: compound chassis built from several boxes for proper car silhouette ---
+  // --- Visuals
   const chassisGroup = new THREE.Group()
   scene.add(chassisGroup)
 
@@ -66,77 +63,46 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
 
-  // Hood (lower front section, toward -X). Sits below cabin level.
-  const hood = new THREE.Mesh(
-    new THREE.BoxGeometry(1.4, 0.7, 1.95),
-    bodyMat
-  )
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.95), bodyMat)
   hood.position.set(-1.3, 0.0, 0)
   hood.castShadow = true
   chassisGroup.add(hood)
 
-  // Trunk (lower back section, toward +X). Slightly lower than cabin.
-  const trunk = new THREE.Mesh(
-    new THREE.BoxGeometry(1.0, 0.65, 1.95),
-    bodyMat
-  )
+  const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.65, 1.95), bodyMat)
   trunk.position.set(1.4, -0.025, 0)
   trunk.castShadow = true
   chassisGroup.add(trunk)
 
-  // Cabin floor / mid-body (matches the physics box footprint roughly).
-  const mid = new THREE.Mesh(
-    new THREE.BoxGeometry(2.4, 0.6, 1.95),
-    bodyMat
-  )
+  const mid = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.95), bodyMat)
   mid.position.set(0, 0.05, 0)
   mid.castShadow = true
   chassisGroup.add(mid)
 
-  // Cabin / greenhouse — body-colored frame around glass.
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(2.0, 0.75, 1.78),
-    bodyMat
-  )
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 1.78), bodyMat)
   cabin.position.set(-0.15, 0.7, 0)
   cabin.castShadow = true
   chassisGroup.add(cabin)
 
-  // Windows: glass strips on left, right, front, back of the cabin.
-  const sideWin = new THREE.Mesh(
-    new THREE.BoxGeometry(1.85, 0.55, 0.02),
-    glassMat
-  )
+  const sideWin = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.55, 0.02), glassMat)
   sideWin.position.set(-0.15, 0.7, 0.9)
   chassisGroup.add(sideWin)
   const sideWin2 = sideWin.clone()
   sideWin2.position.z = -0.9
   chassisGroup.add(sideWin2)
 
-  const frontWin = new THREE.Mesh(
-    new THREE.BoxGeometry(0.02, 0.55, 1.65),
-    glassMat
-  )
+  const frontWin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 1.65), glassMat)
   frontWin.position.set(-1.16, 0.7, 0)
   chassisGroup.add(frontWin)
   const rearWin = frontWin.clone()
   rearWin.position.x = 0.86
   chassisGroup.add(rearWin)
 
-  // Roof
-  const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.08, 1.7),
-    bodyMat
-  )
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 1.7), bodyMat)
   roof.position.set(-0.15, 1.1, 0)
   roof.castShadow = true
   chassisGroup.add(roof)
 
-  // Bumpers (front and rear)
-  const frontBumper = new THREE.Mesh(
-    new THREE.BoxGeometry(0.25, 0.4, 1.95),
-    trimMat
-  )
+  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), trimMat)
   frontBumper.position.set(-2.0, -0.15, 0)
   frontBumper.castShadow = true
   chassisGroup.add(frontBumper)
@@ -145,7 +111,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   rearBumper.position.x = 2.0
   chassisGroup.add(rearBumper)
 
-  // Headlights (front)
   const headlightGeo = new THREE.SphereGeometry(0.18, 16, 10)
   const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
   for (const z of [-0.7, 0.7]) {
@@ -154,7 +119,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     chassisGroup.add(hl)
   }
 
-  // Taillights (back, red)
   const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
   for (const z of [-0.7, 0.7]) {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), taillightMat)
@@ -162,10 +126,8 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     chassisGroup.add(tl)
   }
 
-  // --- Wheels: cylinder + hub + spokes. Pre-rotate the geometry so its axis
-  //     aligns with cannon's wheel axle direction (Z in chassis local frame
-  //     because axleLocal=(0,0,1)). CylinderGeometry default axis is Y, so
-  //     rotate Y→Z by rotateX(PI/2).
+  // Wheels: pre-rotate CylinderGeometry so its (Y) axis aligns with the
+  // cannon wheel's local axle direction (Z, because axleLocal=(0,0,1)).
   const wheelMeshes = []
   const tireGeo = new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_WIDTH, 28)
   tireGeo.rotateX(Math.PI / 2)
@@ -174,8 +136,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const hubGeo = new THREE.CylinderGeometry(WHEEL_RADIUS * 0.55, WHEEL_RADIUS * 0.55, WHEEL_WIDTH + 0.02, 12)
   hubGeo.rotateX(Math.PI / 2)
   const hubMat = new THREE.MeshStandardMaterial({ color: 0xb0b0b6, metalness: 0.85, roughness: 0.3 })
-
-  // Spoke is a thin box across the wheel, repeated 3x rotated around the axle.
   const spokeMat = new THREE.MeshStandardMaterial({ color: 0x7a7a80, metalness: 0.7, roughness: 0.4 })
 
   for (let i = 0; i < 4; i++) {
@@ -186,26 +146,13 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     const hub = new THREE.Mesh(hubGeo, hubMat)
     w.add(hub)
     for (let s = 0; s < 3; s++) {
-      const spoke = new THREE.Mesh(
-        new THREE.BoxGeometry(WHEEL_RADIUS * 0.95, 0.04, 0.04),
-        spokeMat
-      )
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(WHEEL_RADIUS * 0.95, 0.04, 0.04), spokeMat)
       spoke.rotation.z = (s * Math.PI) / 3
       w.add(spoke)
     }
     scene.add(w)
     wheelMeshes.push(w)
   }
-
-  // --- Bright spawn-pillar to verify world rendering at all times.
-  //     Remove later; for now it's a "if you can see this, the deploy is live" marker.
-  const pillar = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.4, 0.4, 10, 16),
-    new THREE.MeshStandardMaterial({ color: 0xff1ad4, emissive: 0xff1ad4, emissiveIntensity: 0.5 })
-  )
-  pillar.position.set(spawnPos.x + 4, 5, spawnPos.z)
-  pillar.castShadow = true
-  scene.add(pillar)
 
   function applyInput(inputState) {
     const engineForce = inputState.forward
