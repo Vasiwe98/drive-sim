@@ -1,6 +1,80 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
 
+// Monkey-patch CANNON.RaycastVehicle.castRay to extend the wheel ray length
+// from `restLength + radius` to `restLength + maxTravel + radius`.
+//
+// Why: cannon-es hardcodes the ray length as restLength + radius. At our
+// equilibrium (suspension compressed by mg/(4k) ≈ 6cm), the wheel raycast
+// tip reaches only ~6cm past the ground. Any transient that lifts the
+// chassis by >6cm — slope-vy on release, oscillation on landing, slight
+// drift in the extended-engagement zone — makes the ray miss entirely.
+// On miss, cannon clamps suspensionLength to restLength → length_diff=0
+// → suspensionForce=0. With no support, the chassis falls. We see this
+// as the bridge-deck "sink." Adding maxTravel into the ray length gives
+// ~36cm of margin — 6× more — so transient lift doesn't break contact.
+// Per agent #2 research: this is the canonical fix in Bullet/cannon-es
+// for the "raycast vehicle sinks on landing" class of bug.
+//
+// We faithfully reproduce cannon-es's castRay (see node_modules/cannon-es/
+// dist/cannon-es.js around line 7429) with the single change to `raylen`.
+{
+  const _rv = new CANNON.Vec3()
+  const _tgt = new CANNON.Vec3()
+  const _chassisVel = new CANNON.Vec3()
+  CANNON.RaycastVehicle.prototype.castRay = function patchedCastRay(wheel) {
+    this.updateWheelTransformWorld(wheel)
+    const chassisBody = this.chassisBody
+    let depth = -1
+    // PATCHED LINE: include maxSuspensionTravel in ray length.
+    const raylen = wheel.suspensionRestLength + wheel.maxSuspensionTravel + wheel.radius
+    wheel.directionWorld.scale(raylen, _rv)
+    const source = wheel.chassisConnectionPointWorld
+    source.vadd(_rv, _tgt)
+    const raycastResult = wheel.raycastResult
+    raycastResult.reset()
+    const oldState = chassisBody.collisionResponse
+    chassisBody.collisionResponse = false
+    this.world.rayTest(source, _tgt, raycastResult)
+    chassisBody.collisionResponse = oldState
+    const object = raycastResult.body
+    wheel.raycastResult.groundObject = 0
+    if (object) {
+      depth = raycastResult.distance
+      wheel.raycastResult.hitNormalWorld = raycastResult.hitNormalWorld
+      wheel.isInContact = true
+      const hitDistance = raycastResult.distance
+      wheel.suspensionLength = hitDistance - wheel.radius
+      const minSuspensionLength = wheel.suspensionRestLength - wheel.maxSuspensionTravel
+      const maxSuspensionLength = wheel.suspensionRestLength + wheel.maxSuspensionTravel
+      if (wheel.suspensionLength < minSuspensionLength) {
+        wheel.suspensionLength = minSuspensionLength
+      }
+      if (wheel.suspensionLength > maxSuspensionLength) {
+        wheel.suspensionLength = maxSuspensionLength
+        wheel.raycastResult.reset()
+      }
+      const denominator = wheel.raycastResult.hitNormalWorld.dot(wheel.directionWorld)
+      chassisBody.getVelocityAtWorldPoint(wheel.raycastResult.hitPointWorld, _chassisVel)
+      const projVel = wheel.raycastResult.hitNormalWorld.dot(_chassisVel)
+      if (denominator >= -0.1) {
+        wheel.suspensionRelativeVelocity = 0
+        wheel.clippedInvContactDotSuspension = 1 / 0.1
+      } else {
+        const inv = -1 / denominator
+        wheel.suspensionRelativeVelocity = projVel * inv
+        wheel.clippedInvContactDotSuspension = inv
+      }
+    } else {
+      wheel.suspensionLength = wheel.suspensionRestLength
+      wheel.suspensionRelativeVelocity = 0.0
+      wheel.directionWorld.scale(-1, wheel.raycastResult.hitNormalWorld)
+      wheel.clippedInvContactDotSuspension = 1.0
+    }
+    return depth
+  }
+}
+
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 //

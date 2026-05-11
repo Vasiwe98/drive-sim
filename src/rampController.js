@@ -9,7 +9,6 @@
 import * as CANNON from 'cannon-es'
 
 const BLEND_IN_SEC = 0.20
-const FOLLOW_RATE = 18
 const ENTER_GATE = 1.5
 // Match the natural wheel-supported equilibrium height: wheel radius (0.5)
 // + suspension at rest equilibrium compression (≈0.239) + connection offset
@@ -129,12 +128,21 @@ export function createRampController(car, ramps, input) {
 
     if (!activeRamp || blendT <= 0) return
 
-    // --- Drive chassis Y toward ramp surface ---
+    // --- Drive chassis Y exactly to ramp surface ---
+    // Direct blend (not asymptotic). At blendT=1, position is *exactly*
+    // targetY each frame. The previous asymptotic follow let position lag
+    // by a few cm at moderate speed; combined with the slope-vy below,
+    // that lag drifted the chassis upward in the extended-engagement zone
+    // (past the visual ramp top, on the flat deck), eventually blowing
+    // past the tiny wheel-raycast margin so the deck ray missed and the
+    // chassis sank. Direct-set kills the lag entirely.
     const surfY = activeRamp.surfaceYAt(cx, cz)
     const targetY = surfY + RIDE_HEIGHT
-    const follow = 1 - Math.exp(-FOLLOW_RATE * dt)
-    const newY = cy + (targetY - cy) * follow * blendT
+    const newY = cy * (1 - blendT) + targetY * blendT
     car.chassisBody.position.y = newY
+    // Sync previousPosition so cannon's interpolation/broadphase doesn't
+    // see a phantom velocity injected by the direct position write.
+    car.chassisBody.previousPosition.y = newY
 
     // Set chassis vy to the slope's natural rate of climb (= horizontal
     // velocity along the ramp axis × dy/dAxis). When the car later exits
@@ -144,10 +152,15 @@ export function createRampController(car, ramps, input) {
     // CRITICAL: this also cancels gravity-velocity accumulation each frame.
     // Ramps have no physics body so wheel raycasts miss during the climb;
     // suspension force is zero; gravity is unopposed. Without this reset
-    // velocity.y grows unboundedly negative and the asymptotic position
-    // follow falls behind — visible as the chassis body sinking below the
-    // tyres during the climb. So this block runs regardless of extendHigh.
-    // The launch-vs-coast distinction is handled at release time instead.
+    // velocity.y grows unboundedly negative — visible as the chassis body
+    // sinking below the tyres during the climb.
+    //
+    // EXCEPTION: in the extended zone of an extendHigh ramp (chassis past
+    // the visual ramp top, on a flat platform), the surface is flat — vy
+    // should be 0, not slope-vy. Slope-vy in this zone lifts the chassis
+    // off the deck and the wheel raycasts only have a tiny (~6cm) margin
+    // before they miss the deck — bouncing the chassis and producing the
+    // visible sink at the ramp→deck handoff.
     if (blendT > 0.4) {
       const r = activeRamp
       const axisHigh = r.axis === 'x' ? r.high.x : r.high.z
@@ -155,7 +168,11 @@ export function createRampController(car, ramps, input) {
       const slopeSlope = (r.high.y - r.low.y) / (axisHigh - axisLow)
       const v = car.chassisBody.velocity
       const horizontalV = r.axis === 'x' ? v.x : v.z
-      car.chassisBody.velocity.y = horizontalV * slopeSlope
+      const axisCoord = r.axis === 'x' ? cx : cz
+      const axisSpan = axisHigh - axisLow
+      const t = axisSpan !== 0 ? (axisCoord - axisLow) / axisSpan : 0
+      const inExtendedZone = r.extendHigh > 0 && t >= 1
+      car.chassisBody.velocity.y = inExtendedZone ? 0 : horizontalV * slopeSlope
     }
 
     // --- Direct chassis force/yaw while engaged ---
