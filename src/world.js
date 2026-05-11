@@ -243,23 +243,18 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: 0, y: 3, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
   // Bridge approach ramps. high.y matches the deck TOP (3.25 = deck center
   // 3 + halfExtents.y 0.25) so the chassis is delivered flush with the deck
-  // surface, not 0.25m short. extendHigh keeps the controller engaged for
-  // 2.5m past the visible top so the rear wheels (1.65m behind chassis
-  // center) don't dangle in the no-physics gap between the ramp visual and
-  // the deck physics body.
+  // surface, not 0.25m short.
   defineRamp(scene, ramps, {
     axis: 'z',
     low: { x: 0, y: 0.05, z: -33 },
     high: { x: 0, y: 3.25, z: -55 },
     width: 10,
-    extendHigh: 2.5,
   })
   defineRamp(scene, ramps, {
     axis: 'z',
     low: { x: 0, y: 0.05, z: -107 },
     high: { x: 0, y: 3.25, z: -85 },
     width: 10,
-    extendHigh: 2.5,
   })
   addStaticBox(world, scene, { x: -4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
   addStaticBox(world, scene, { x: 4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
