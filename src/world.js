@@ -61,7 +61,6 @@ function buildRampZ(world, scene, lowEnd, highEnd, opts = {}) {
   const cz = tz + (thickness / 2) * (dy / slopeLen) * Math.sign(dz)
 
   const result = addStaticBox(world, scene, { x: tx, y: cy, z: cz }, { x: width, y: thickness, z: slopeLen }, { x: rotX }, color)
-  if (result.body) result.body.collisionResponse = false
   return result
 }
 
@@ -82,8 +81,35 @@ function buildRampX(world, scene, lowEnd, highEnd, opts = {}) {
   const cy = ty - (thickness / 2) * Math.abs(dx) / slopeLen
 
   const result = addStaticBox(world, scene, { x: cx, y: cy, z: tz }, { x: slopeLen, y: thickness, z: width }, { z: rotZ }, color)
-  if (result.body) result.body.collisionResponse = false
   return result
+}
+
+// Invisible launch zone — sensor box that fires an upward impulse on the
+// chassis when it passes through. Impulse magnitude scales with the
+// chassis's horizontal speed, so fast approaches produce dramatic launches.
+// Used at the top of the featured launch ramp.
+function addLaunchZone(world, pos, opts = {}) {
+  const { sizeX = 3, sizeY = 2, sizeZ = 8, impulsePerSpeed = 110, cooldownMs = 1200 } = opts
+  const sensor = new CANNON.Body({
+    mass: 0,
+    shape: new CANNON.Box(new CANNON.Vec3(sizeX / 2, sizeY / 2, sizeZ / 2)),
+    collisionResponse: false,
+  })
+  sensor.position.set(pos.x, pos.y, pos.z)
+  world.addBody(sensor)
+
+  let armed = true
+  sensor.addEventListener('collide', (event) => {
+    if (!armed) return
+    const other = event.body
+    if (!other || other.mass === 0) return
+    armed = false
+    setTimeout(() => { armed = true }, cooldownMs)
+    const v = other.velocity
+    const horizontalSpeed = Math.sqrt(v.x * v.x + v.z * v.z)
+    const impulse = new CANNON.Vec3(0, horizontalSpeed * impulsePerSpeed, 0)
+    other.applyImpulse(impulse)
+  })
 }
 
 // Decorative pad + collision sensor that launches the car upward on touch.
@@ -127,26 +153,26 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: -40, y: 0.05, z: 40 }, { x: 60, y: 0.1, z: 6 }, null, COLOR_ASPHALT, false)
 
   // --- FEATURED LAUNCH RAMP: directly ahead of spawn (+X direction).
-  //     Steep + bright red so the player sees it immediately. ~30° slope,
-  //     5m vertical rise → satisfying launch at speed. Thin tilted box,
-  //     so the underside is elevated 4m+ at the high end — drive under it
-  //     from the side too.
-  buildRampX(world, scene, { x: 14, y: 0.05, z: 0 }, { x: 22, y: 5, z: 0 }, { width: 14, color: 0xd92e2e })
+  //     ~9° slope so suspension can hold all 4 wheels in contact while climbing.
+  //     A launch-zone sensor at the top gives an upward impulse that scales
+  //     with horizontal speed → fast approaches launch you high.
+  buildRampX(world, scene, { x: 14, y: 0.05, z: 0 }, { x: 32, y: 3, z: 0 }, { width: 14, color: 0xd92e2e })
+  addLaunchZone(world, { x: 33, y: 4, z: 0 }, { impulsePerSpeed: 130 })
 
-  // --- Other ramps (steeper than before for better launches)
-  buildRampZ(world, scene, { x: 30, y: 0.05, z: 16 }, { x: 30, y: 4.5, z: 24 })
-  buildRampZ(world, scene, { x: -32, y: 0.05, z: -16 }, { x: -32, y: 4.5, z: -24 })
-  buildRampX(world, scene, { x: 53, y: 0.05, z: -55 }, { x: 67, y: 4.5, z: -55 })
-  buildRampX(world, scene, { x: -67, y: 4.5, z: 55 }, { x: -53, y: 0.05, z: 55 })
+  // --- Other ramps (also gentle so they're drivable end-to-end)
+  buildRampZ(world, scene, { x: 30, y: 0.05, z: 14 }, { x: 30, y: 3, z: 32 })
+  buildRampZ(world, scene, { x: -32, y: 0.05, z: -14 }, { x: -32, y: 3, z: -32 })
+  buildRampX(world, scene, { x: 48, y: 0.05, z: -55 }, { x: 70, y: 3.5, z: -55 })
+  buildRampX(world, scene, { x: -70, y: 3.5, z: 55 }, { x: -48, y: 0.05, z: 55 })
 
-  // --- Bridge: deck at y=5 + four supports + two approach ramps that meet it.
-  addStaticBox(world, scene, { x: 0, y: 5, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
-  buildRampZ(world, scene, { x: 0, y: 0.05, z: -41 }, { x: 0, y: 5, z: -55 }, { width: 10 })
-  buildRampZ(world, scene, { x: 0, y: 0.05, z: -99 }, { x: 0, y: 5, z: -85 }, { width: 10 })
-  addStaticBox(world, scene, { x: -4, y: 2.5, z: -60 }, { x: 1, y: 5, z: 1 }, null, COLOR_SUPPORT)
-  addStaticBox(world, scene, { x: 4, y: 2.5, z: -60 }, { x: 1, y: 5, z: 1 }, null, COLOR_SUPPORT)
-  addStaticBox(world, scene, { x: -4, y: 2.5, z: -80 }, { x: 1, y: 5, z: 1 }, null, COLOR_SUPPORT)
-  addStaticBox(world, scene, { x: 4, y: 2.5, z: -80 }, { x: 1, y: 5, z: 1 }, null, COLOR_SUPPORT)
+  // --- Bridge: deck lowered to y=3 so approach ramps stay drivable at gentle angles.
+  addStaticBox(world, scene, { x: 0, y: 3, z: -70 }, { x: 10, y: 0.5, z: 30 }, null, COLOR_BRIDGE_DECK)
+  buildRampZ(world, scene, { x: 0, y: 0.05, z: -33 }, { x: 0, y: 3, z: -55 }, { width: 10 })
+  buildRampZ(world, scene, { x: 0, y: 0.05, z: -107 }, { x: 0, y: 3, z: -85 }, { width: 10 })
+  addStaticBox(world, scene, { x: -4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
+  addStaticBox(world, scene, { x: 4, y: 1.5, z: -60 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
+  addStaticBox(world, scene, { x: -4, y: 1.5, z: -80 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
+  addStaticBox(world, scene, { x: 4, y: 1.5, z: -80 }, { x: 1, y: 3, z: 1 }, null, COLOR_SUPPORT)
 
   // --- Jump pads
   addJumpPad(world, scene, { x: 18, y: 0, z: 18 })

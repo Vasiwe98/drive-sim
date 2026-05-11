@@ -10,21 +10,23 @@ const REVERSE_FORCE = -1000    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-// Chassis collider is VERY THIN in Y (just 10cm tall) so the wheel
-// mount points (at chassis local y = -0.15) are clearly OUTSIDE
-// the box. This guarantees the wheel raycasts cast through empty
-// space, not through the chassis collider. The box is still long
-// and wide enough to bump walls and ramps reliably. Vertical wall
-// overlap is small but walls are 16m tall — chassis at ~y=0.9
-// always overlaps walls in y.
-const CHASSIS_HALF = { x: 1.9, y: 0.05, z: 0.95 }
+// Chassis collider is offset upward by 0.5m in chassis local frame
+// (see addShape call below) so it sits at cabin height — well above
+// any ramp's leading edge. The chassis can't wedge into a ramp from
+// below because the collider is too high to ever reach a ramp's low
+// end. Wheels still raycast straight down from chassis local y=-0.15.
+const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 220 })
-  chassisBody.addShape(chassisShape)
+  // Offset the collider 0.5m UP from the body origin (which is at wheel
+  // level). The collider ends up at cabin height — high enough to bump
+  // walls but always above ramp leading edges, so the chassis can never
+  // wedge into a ramp from below.
+  chassisBody.addShape(chassisShape, new CANNON.Vec3(0, 0.5, 0))
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
