@@ -1,24 +1,24 @@
 # Tasks
 
 Last updated: 2026-05-10
-Current task: #0 Scaffold project
-Next action: Run `npm install`, then `gh repo create drive-sim --public --source=. --remote=origin --push`, enable Pages, first `npm run deploy`.
+Current task: #1 Three.js scene
+Next action: Replace `src/main.js` stub with a Three.js renderer + PerspectiveCamera + lights + sky + ground plane + animation loop. Add temporary OrbitControls for inspection.
 
 ## Done
-_(none yet)_
+- [x] #0 Scaffold project
+  - package.json, vite.config.js (base: `/drive-sim/`), index.html, .gitignore, README.md
+  - PLAN.md, TASKS.md, JOURNAL.md
+  - `npm install` (62 packages)
+  - Moved off Google Drive → `C:\Users\vasiw\code\drive-sim` (Drive sync was locking npm install)
+  - GitHub repo: https://github.com/Vasiwe98/drive-sim (public)
+  - First `npm run deploy` → gh-pages branch published
+  - GH Pages enabled, building at https://vasiwe98.github.io/drive-sim/
 
 ## In Progress
-- [ ] #0 Scaffold project
-  - [x] package.json, vite.config.js, index.html, .gitignore, README.md, src/main.js stub
-  - [x] PLAN.md, TASKS.md, JOURNAL.md stubs
-  - [ ] `npm install`
-  - [ ] `gh repo create drive-sim --public --push`
-  - [ ] Enable GH Pages
-  - [ ] First `npm run deploy`
-  - [ ] Verify live URL at https://vasiwe98.github.io/drive-sim/
+_(starting #1)_
 
 ## Pending
-- [ ] #1 Three.js scene (renderer, lights, ground, OrbitControls)
+- [ ] #1 Three.js scene
 - [ ] #2 Physics world (CANNON.World, fixed-step, debugger, ground body)
 - [ ] #3 Vehicle physics (RaycastVehicle + WASD)
 - [ ] #4 Vehicle visuals (chassis + 4 wheel meshes synced from physics)
