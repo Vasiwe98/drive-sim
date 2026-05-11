@@ -72,6 +72,12 @@ export function createRampController(car, ramps, input) {
     if (bestRamp && !activeRamp) {
       activeRamp = bestRamp
       exiting = false
+      // Switch chassis to KINEMATIC. Eliminates the tug-of-war between
+      // gravity + suspension impulses and the controller's direct position
+      // writes. Kinematic bodies move only by velocity; cannon's
+      // applyImpulse is a no-op on them. Wheel raycasts still update wheel
+      // state each step (so at release the suspension data is fresh).
+      car.chassisBody.type = CANNON.Body.KINEMATIC
       // SNAP chassis yaw to the ramp's axis direction so the chassis starts
       // perfectly aligned. Without this, any small pre-entry yaw causes
       // the chassis to drift sideways off the ramp over its length.
@@ -99,21 +105,29 @@ export function createRampController(car, ramps, input) {
       car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       car.chassisBody.angularVelocity.set(0, 0, 0)
     } else if (!bestRamp && activeRamp) {
-      // INSTANT RELEASE on exit. If we fade out over a few hundred ms, the
-      // controller keeps pulling the chassis toward the (clamped) ramp Y
-      // even while the wheels are trying to lift the car to whatever's
-      // below — e.g. landing on a bridge deck at a slightly different
-      // height. The fight causes the car to get stuck. Releasing
-      // immediately lets gravity + suspension take over cleanly.
-      //
-      // For ramps with extendHigh (bridge approach ramps that hand off onto
-      // a flat platform), zero chassis vy so the car coasts onto the deck
-      // instead of launching upward and bouncing on landing. The featured
-      // red launch ramp has no extendHigh, so it keeps the slope-inherited
-      // vy and still produces a satisfying jump.
+      // INSTANT RELEASE on exit. For ramps with extendHigh (bridge approach
+      // ramps that hand off onto a flat platform), zero chassis vy so the
+      // car coasts onto the deck instead of launching upward and bouncing
+      // on landing. The featured red launch ramp has no extendHigh, so it
+      // keeps the slope-inherited vy and still produces a satisfying jump.
       if (activeRamp.extendHigh) {
         car.chassisBody.velocity.y = 0
       }
+      // Switch back to DYNAMIC. Pre-set the wheel suspension state to the
+      // settled equilibrium so the first physics step after release applies
+      // a spring force equal to gravity, not a transient that bounces the
+      // chassis. (Without this, cannon's first raycast might see stale
+      // wheelInfo state and the spring/damper computes a wrong transient.)
+      const gAccel = 9.82
+      for (const w of car.vehicle.wheelInfos) {
+        const eqCompression = gAccel / (4 * w.suspensionStiffness)
+        w.suspensionLength = w.suspensionRestLength - eqCompression
+        w.suspensionRelativeVelocity = 0
+        w.clippedInvContactDotSuspension = 1
+        w.isInContact = true
+      }
+      car.chassisBody.type = CANNON.Body.DYNAMIC
+      car.chassisBody.wakeUp()
       activeRamp = null
       exiting = false
       blendT = 0
