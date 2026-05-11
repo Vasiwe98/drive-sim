@@ -37,13 +37,19 @@ export function createRampController(car, ramps, input) {
   let activeRamp = null
   let blendT = 0
   let exiting = false
+  // Explicit yaw scalar. While the controller is engaged the chassis
+  // quaternion is overwritten from this value every frame, so cannon's
+  // internal angular integration cannot accumulate tiny drift between
+  // frames. (Zeroing angularVelocity isn't sufficient — torques applied
+  // during the physics step still rotate the quaternion before the next
+  // controller tick can zero them.) This eliminates the slow-climb
+  // sideways drift.
+  let currentYaw = 0
 
   const _fwdLocal = new CANNON.Vec3(1, 0, 0)
   const _fwdWorld = new CANNON.Vec3()
   const _forceScratch = new CANNON.Vec3()
-  const _yawDelta = new CANNON.Quaternion()
   const _yawAxis = new CANNON.Vec3(0, 1, 0)
-  const _qScratch = new CANNON.Quaternion()
 
   function update(dt) {
     const cx = car.chassisBody.position.x
@@ -70,14 +76,28 @@ export function createRampController(car, ramps, input) {
       // SNAP chassis yaw to the ramp's axis direction so the chassis starts
       // perfectly aligned. Without this, any small pre-entry yaw causes
       // the chassis to drift sideways off the ramp over its length.
-      const yaw = targetYawForRamp(activeRamp)
-      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, yaw)
+      currentYaw = targetYawForRamp(activeRamp)
+      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       car.chassisBody.angularVelocity.set(0, 0, 0)
+      // Also zero lateral velocity at snap so any pre-entry sideways
+      // motion (from flat-ground steering) doesn't carry one frame into
+      // the climb before the regular zero-lateral block kicks in.
+      car.chassisBody.vectorToWorldFrame(_fwdLocal, _fwdWorld)
+      _fwdWorld.y = 0
+      const _len = Math.sqrt(_fwdWorld.x * _fwdWorld.x + _fwdWorld.z * _fwdWorld.z)
+      if (_len > 0.0001) {
+        _fwdWorld.x /= _len
+        _fwdWorld.z /= _len
+        const v0 = car.chassisBody.velocity
+        const fwdDot0 = v0.x * _fwdWorld.x + v0.z * _fwdWorld.z
+        v0.x = _fwdWorld.x * fwdDot0
+        v0.z = _fwdWorld.z * fwdDot0
+      }
     } else if (bestRamp && activeRamp && bestRamp !== activeRamp) {
       activeRamp = bestRamp
       exiting = false
-      const yaw = targetYawForRamp(activeRamp)
-      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, yaw)
+      currentYaw = targetYawForRamp(activeRamp)
+      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       car.chassisBody.angularVelocity.set(0, 0, 0)
     } else if (!bestRamp && activeRamp) {
       // INSTANT RELEASE on exit. If we fade out over a few hundred ms, the
@@ -169,13 +189,12 @@ export function createRampController(car, ramps, input) {
       if (input.left) yawRate = MAX_YAW_RATE_FAST * yawFactor
       else if (input.right) yawRate = -MAX_YAW_RATE_FAST * yawFactor
 
-      // Integrate yaw directly into the chassis quaternion — no angular
-      // velocity needed, so cannon's integrator has nothing to corrupt.
-      if (yawRate !== 0) {
-        _yawDelta.setFromAxisAngle(_yawAxis, yawRate * dt)
-        car.chassisBody.quaternion.mult(_yawDelta, _qScratch)
-        car.chassisBody.quaternion.copy(_qScratch)
-      }
+      // Integrate yaw into a SCALAR, then overwrite the chassis quaternion
+      // from that scalar every frame. This guarantees no quaternion drift
+      // can accumulate from the physics step's integration — the chassis
+      // orientation is exactly currentYaw, always.
+      currentYaw += yawRate * dt
+      car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       // Zero ALL angular velocity each frame so nothing accumulates.
       car.chassisBody.angularVelocity.set(0, 0, 0)
 
