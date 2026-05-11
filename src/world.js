@@ -42,30 +42,27 @@ export function addStaticBox(world, scene, pos, size, rot = null, color = null, 
 }
 
 // Build a drivable ramp from lowEnd to highEnd (both top-surface center
-// points). Computes box center and rotation so the top surface aligns
-// with the slope and the low corner sits at lowEnd.y.
+// points). Chassis passes THROUGH the ramp collider (collisionResponse=false)
+// while wheel raycasts still hit the top surface — so wheels lift the car
+// up the slope cleanly, without the chassis ever wedging into the ramp.
 function buildRampZ(world, scene, lowEnd, highEnd, opts = {}) {
   const { width = 10, thickness = 0.4, color = COLOR_RAMP } = opts
   const dy = highEnd.y - lowEnd.y
   const dz = highEnd.z - lowEnd.z
   const slopeLen = Math.sqrt(dy * dy + dz * dz)
 
-  // For rotation around X: positive theta tilts +Z toward -Y.
-  // We want box's high end to be at highEnd. If dz>0, highEnd is at +Z and we
-  // want +Z to be raised → negative rotation. sin(rotX) = -dy/slopeLen.
   const rotX = -Math.asin(dy / slopeLen) * Math.sign(dz)
 
-  // Top center
   const tx = (lowEnd.x + highEnd.x) / 2
   const ty = (lowEnd.y + highEnd.y) / 2
   const tz = (lowEnd.z + highEnd.z) / 2
 
-  // Box center is offset DOWN from top by thickness/2 perpendicular to slope.
-  // Top normal direction (unit): (0, dz/L * sign, -dy/L * sign).
   const cy = ty - (thickness / 2) * Math.abs(dz) / slopeLen
   const cz = tz + (thickness / 2) * (dy / slopeLen) * Math.sign(dz)
 
-  return addStaticBox(world, scene, { x: tx, y: cy, z: cz }, { x: width, y: thickness, z: slopeLen }, { x: rotX }, color)
+  const result = addStaticBox(world, scene, { x: tx, y: cy, z: cz }, { x: width, y: thickness, z: slopeLen }, { x: rotX }, color)
+  if (result.body) result.body.collisionResponse = false
+  return result
 }
 
 // Same idea but the ramp varies in X (rotation around Z).
@@ -75,8 +72,6 @@ function buildRampX(world, scene, lowEnd, highEnd, opts = {}) {
   const dx = highEnd.x - lowEnd.x
   const slopeLen = Math.sqrt(dy * dy + dx * dx)
 
-  // Rotation around Z: positive tilts +X toward +Y.
-  // If dx>0 and dy>0 (high end at +X, raised): we want +X tilted +Y. Positive rotation.
   const rotZ = Math.asin(dy / slopeLen) * Math.sign(dx)
 
   const tx = (lowEnd.x + highEnd.x) / 2
@@ -86,7 +81,9 @@ function buildRampX(world, scene, lowEnd, highEnd, opts = {}) {
   const cx = tx - (thickness / 2) * (dy / slopeLen) * Math.sign(dx)
   const cy = ty - (thickness / 2) * Math.abs(dx) / slopeLen
 
-  return addStaticBox(world, scene, { x: cx, y: cy, z: tz }, { x: slopeLen, y: thickness, z: width }, { z: rotZ }, color)
+  const result = addStaticBox(world, scene, { x: cx, y: cy, z: tz }, { x: slopeLen, y: thickness, z: width }, { z: rotZ }, color)
+  if (result.body) result.body.collisionResponse = false
+  return result
 }
 
 // Decorative pad + collision sensor that launches the car upward on touch.

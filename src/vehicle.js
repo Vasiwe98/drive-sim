@@ -5,8 +5,8 @@ import * as THREE from 'three'
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 3500  // more punch = more speed at the ramps = bigger launches
-const REVERSE_FORCE = -1500    // negative = -X = backward
+const MAX_ENGINE_FORCE = 2200  // moderate — high values create pitch torque that flips the car
+const REVERSE_FORCE = -1000    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
@@ -28,11 +28,12 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Pitch and roll are UNLOCKED (default angularFactor) so the chassis tilts
-  // naturally going up ramps — the car arcs through the air on jumps instead
-  // of staying horizontal. Moderate angularDamping keeps it from flipping
-  // wildly on bad landings.
-  chassisBody.angularDamping = 0.4
+  // Lock ROLL only (angularFactor.z = 0). Pitch is allowed so the chassis
+  // tilts naturally going up ramps and arcs in the air. Yaw allowed for
+  // steering. Roll locking prevents sideways rollovers entirely. High
+  // angularDamping keeps pitch behaved (no wheelies from acceleration).
+  chassisBody.angularFactor.set(1, 1, 0)
+  chassisBody.angularDamping = 0.6
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
