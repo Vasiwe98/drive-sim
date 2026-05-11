@@ -10,37 +10,28 @@ const canvas = document.getElementById('game')
 const { scene, camera, renderer, controls } = createScene(canvas)
 const { world, step } = createPhysicsWorld()
 
-const cannonDebugger = new CannonDebugger(scene, world, { color: 0xff00ff })
+// Debug overlay — magenta wireframes. Toggle with ?debug=1 in the URL.
+const useDebugger = new URLSearchParams(location.search).has('debug')
+const cannonDebugger = useDebugger ? new CannonDebugger(scene, world, { color: 0xff00ff }) : null
 
-// Vehicle. spawnPos will eventually come from buildWorld(); for now use a default.
+// spawnPos will eventually come from buildWorld(); default for now.
 const spawnPos = new CANNON.Vec3(0, 4, 0)
-const { chassisBody, vehicle, update: updateVehicle } = createVehicle(world, scene, spawnPos)
+const car = createVehicle(world, scene, spawnPos)
 
-// Temporary chassis mesh until Task 4 wires up proper visuals (chassis + wheels).
-const chassisMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(4, 1, 2),
-  new THREE.MeshStandardMaterial({ color: 0xff6b35 })
-)
-chassisMesh.castShadow = true
-scene.add(chassisMesh)
-
-// Aim OrbitControls at the car so it stays in frame while we test driving.
-controls.target.copy(chassisBody.position)
+controls.target.copy(car.chassisBody.position)
 
 const clock = new THREE.Clock()
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.1)
 
-  updateVehicle(input, dt)
+  car.applyInput(input)
   step(dt)
+  car.syncMeshes()
 
-  chassisMesh.position.copy(chassisBody.position)
-  chassisMesh.quaternion.copy(chassisBody.quaternion)
+  controls.target.lerp(car.chassisBody.position, 0.1)
 
-  controls.target.lerp(chassisBody.position, 0.1)
-
-  cannonDebugger.update()
+  if (cannonDebugger) cannonDebugger.update()
   controls.update()
   renderer.render(scene, camera)
   requestAnimationFrame(loop)

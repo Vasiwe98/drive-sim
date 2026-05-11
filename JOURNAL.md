@@ -61,3 +61,13 @@ Tasks 3 (vehicle physics), 5 (procedural world), and 6 (cameras) are now safe to
 `src/main.js` swapped the test box for the vehicle. Temporary orange chassis cube renders until Task 4 adds proper visuals. OrbitControls target lerps toward the car so it stays framed during testing.
 
 [LINKEDIN] Bullet physics' RaycastVehicle algorithm (which cannon-es ports) — four ray-cast wheels, per-wheel suspension forces, slip-based friction, custom rotational speed when sliding — is decades of academic research and Bullet engineering. In 2026 it's `new CANNON.RaycastVehicle({ chassisBody })` plus `addWheel({...})` four times. I copied the params verbatim from the cannon-es example as the plan instructed; reinventing them would have been the death-spiral risk flagged in `PLAN.md` risk #2.
+
+## 2026-05-10 — Task 4 complete
+
+Vehicle visuals folded into `src/vehicle.js`. Chassis is now a Three.js Group containing the main body (BoxGeometry, orange MeshStandardMaterial with metalness 0.3), a darker cabin/roof box sitting on top and offset toward the -X (front) side, and two emissive headlights on the front face so it's obvious which way is forward. Wheels are 4 CylinderGeometry cylinders with one-time `wheelGeo.rotateZ(Math.PI/2)` to align Y→X (the wheel's local axle direction in cannon-es), then per-frame `quaternion.copy(wheelInfos[i].worldTransform.quaternion)` after calling `vehicle.updateWheelTransform(i)`.
+
+API refactor: `createVehicle` now exposes `applyInput(input)`, `syncMeshes()`, and `setColor(c)` (ready for the settings-menu stretch).
+
+Also gated `cannon-es-debugger` behind `?debug` query param — defaulting it off now that real meshes are visible.
+
+[LINKEDIN] One non-obvious gotcha that would've killed an hour in 2014: Three.js's CylinderGeometry has its default axis along Y, but cannon-es builds the wheel's world transform assuming the wheel's local X axis is the axle. Solution is a single line: `wheelGeo.rotateZ(Math.PI/2)` bakes Y→X into the geometry once, then the per-frame physics quaternion just works. In 2014 I would have figured this out by drag-testing until something looked right; in 2026 it's flagged in the plan ahead of time and fixed in one line.
