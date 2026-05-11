@@ -39,9 +39,13 @@ export class CameraRig {
     if (this.controls) this.controls.enabled = false
 
     this._onKey = (e) => {
-      if (e.key === 'c' || e.key === 'C') this.cycle()
+      if (e.code === 'KeyC' || e.key === 'c' || e.key === 'C') this.cycle()
     }
     window.addEventListener('keydown', this._onKey)
+  }
+
+  getModeName() {
+    return MODE_NAMES[this.mode]
   }
 
   setTarget(body) {

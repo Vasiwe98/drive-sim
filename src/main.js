@@ -6,7 +6,7 @@ import { createVehicle } from './vehicle.js'
 import { buildWorld } from './world.js'
 import { CameraRig } from './cameras.js'
 import { input } from './input.js'
-import { ui } from './ui.js'
+import { ui, onStop } from './ui.js'
 
 const canvas = document.getElementById('game')
 const { scene, camera, renderer, controls } = createScene(canvas)
@@ -21,6 +21,15 @@ const car = createVehicle(world, scene, spawnPos)
 const cameraRig = new CameraRig(camera, controls)
 cameraRig.setTarget(car.chassisBody)
 
+// On ESC → return to menu: reset car to spawn, zero velocity.
+onStop(() => {
+  car.chassisBody.position.copy(spawnPos)
+  car.chassisBody.velocity.setZero()
+  car.chassisBody.angularVelocity.setZero()
+  car.chassisBody.quaternion.set(0, 0, 0, 1)
+})
+
+let lastMode = -1
 const clock = new THREE.Clock()
 
 function loop() {
@@ -30,6 +39,13 @@ function loop() {
   step(dt)
   car.syncMeshes()
   cameraRig.update(dt)
+
+  // HUD updates
+  if (cameraRig.mode !== lastMode) {
+    lastMode = cameraRig.mode
+    ui.setCameraMode(cameraRig.getModeName())
+  }
+  ui.setSpeed(car.getSpeedKmh())
 
   if (cannonDebugger) cannonDebugger.update()
   renderer.render(scene, camera)
