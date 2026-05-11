@@ -28,12 +28,13 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
-  // Lock ROLL only (angularFactor.z = 0). Pitch is allowed so the chassis
-  // tilts naturally going up ramps and arcs in the air. Yaw allowed for
-  // steering. Roll locking prevents sideways rollovers entirely. High
-  // angularDamping keeps pitch behaved (no wheelies from acceleration).
-  chassisBody.angularFactor.set(1, 1, 0)
-  chassisBody.angularDamping = 0.6
+  // Lock PITCH and ROLL — only yaw is allowed (for steering).
+  // Pitch was unlocking the car flipping bug. Without pitch, the chassis
+  // stays horizontal — but the car can still launch off ramps because the
+  // suspension lifts the chassis vertically as wheels climb the slope.
+  // Less visual drama on the climb, but rock-solid stability.
+  chassisBody.angularFactor.set(0, 1, 0)
+  chassisBody.angularDamping = 0.4
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
