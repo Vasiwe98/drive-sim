@@ -37,3 +37,11 @@ Three.js scene live: sky-blue background, hemi + directional sun, 400×400 green
 Factored into `src/scene.js` (factory `createScene(canvas) → { scene, camera, renderer, controls }`) and `src/main.js` (animation loop). Clean separation sets up the integration pattern for tasks 2–6.
 
 [LINKEDIN] The "spinning 3D world in a browser" demo that would've been a serious milestone in 2014 (download libgl, configure shaders, write a vertex/fragment program just to draw a plane) is now ~50 lines of Three.js. Three primitives — `WebGLRenderer`, `PerspectiveCamera`, `Scene` — and you're animating at 60fps with antialiasing and shadow maps on by default.
+
+## 2026-05-10 — Task 2 complete
+
+Cannon-es physics wired up in `src/physics.js`: gravity, SAP broadphase, allow-sleep, ground Plane body rotated to horizontal. Fixed-step `world.step(1/60, dt, 3)` in main loop so high-refresh monitors don't accelerate the simulation. Added `cannon-es-debugger` rendering wireframes in magenta on top of the regular scene so I can see physics shapes directly. Test box drops from 8m and lands — gravity confirmed.
+
+Bundle grew from 487 KB → 579 KB (122 → 149 KB gzipped) with the addition of cannon-es. Still well within reasonable for a single-page demo.
+
+[LINKEDIN] In 2014, "make a box fall onto a plane" meant: derive the verlet integration, implement collision detection between an AABB and a half-space, integrate quaternions for orientation. In 2026, it's `new CANNON.Body({ mass: 5, shape: new CANNON.Box(...) })` plus `boxMesh.position.copy(boxBody.position)` once per frame. Cannon-es handles the rest.
