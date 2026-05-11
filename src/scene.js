@@ -34,8 +34,10 @@ export function createScene(canvas) {
   sun.shadow.camera.far = 200
   scene.add(sun)
 
+  // Ground sized to match the arena (220x220) so the visible grass ends
+  // right where the boundary walls are — no driving "off the world."
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
+    new THREE.PlaneGeometry(220, 220),
     new THREE.MeshStandardMaterial({ color: GROUND_COLOR })
   )
   ground.rotation.x = -Math.PI / 2

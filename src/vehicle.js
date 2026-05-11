@@ -1,10 +1,12 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
 
-// Tuned for smooth arcade feel — derived from cannon-es example then adjusted.
+// Tuned for smooth arcade feel.
+// Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
+// W produces positive engine force, pushing the car in +X.
 const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 2500   // bumped from 1500; with frictionSlip=5 we have grip to use it
-const REVERSE_FORCE = -1200
+const MAX_ENGINE_FORCE = 2500
+const REVERSE_FORCE = -1200    // negative = -X = backward
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
@@ -49,16 +51,15 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     useCustomSlidingRotationalSpeed: true,
   }
 
-  // Wheels mounted just below the (thin) chassis collider and at proper car
-  // proportions — wheels nearer the corners (x = ±1.65) keep the wheelbase
-  // wide for stability. Indices 0=FL, 1=FR, 2=RL, 3=RR. -X = forward.
-  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, 0.95)
-  vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, -0.95)
-  vehicle.addWheel(wheelOptions)
+  // Wheels mounted at corners just below the (thin) chassis collider.
+  // Indices 0=FL, 1=FR, 2=RL, 3=RR. +X = forward (front wheels = +X).
   wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, 0.95)
   vehicle.addWheel(wheelOptions)
   wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, -0.95)
+  vehicle.addWheel(wheelOptions)
+  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, 0.95)
+  vehicle.addWheel(wheelOptions)
+  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, -0.95)
   vehicle.addWheel(wheelOptions)
 
   vehicle.addToWorld(world)
@@ -71,13 +72,16 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
 
+  // Hood at +X (front). Trunk at -X (back). Cabin shifted slightly toward
+  // the front (+X) since most cars have the cabin biased toward the rear
+  // of the engine bay.
   const hood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.95), bodyMat)
-  hood.position.set(-1.3, 0.0, 0)
+  hood.position.set(1.3, 0.0, 0)
   hood.castShadow = true
   chassisGroup.add(hood)
 
   const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.65, 1.95), bodyMat)
-  trunk.position.set(1.4, -0.025, 0)
+  trunk.position.set(-1.4, -0.025, 0)
   trunk.castShadow = true
   chassisGroup.add(trunk)
 
@@ -87,50 +91,54 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   chassisGroup.add(mid)
 
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 1.78), bodyMat)
-  cabin.position.set(-0.15, 0.7, 0)
+  cabin.position.set(0.15, 0.7, 0)
   cabin.castShadow = true
   chassisGroup.add(cabin)
 
   const sideWin = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.55, 0.02), glassMat)
-  sideWin.position.set(-0.15, 0.7, 0.9)
+  sideWin.position.set(0.15, 0.7, 0.9)
   chassisGroup.add(sideWin)
   const sideWin2 = sideWin.clone()
   sideWin2.position.z = -0.9
   chassisGroup.add(sideWin2)
 
+  // Windshield at the front (+X end of cabin), rear window at -X end.
   const frontWin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 1.65), glassMat)
-  frontWin.position.set(-1.16, 0.7, 0)
+  frontWin.position.set(1.16, 0.7, 0)
   chassisGroup.add(frontWin)
   const rearWin = frontWin.clone()
-  rearWin.position.x = 0.86
+  rearWin.position.x = -0.86
   chassisGroup.add(rearWin)
 
   const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 1.7), bodyMat)
-  roof.position.set(-0.15, 1.1, 0)
+  roof.position.set(0.15, 1.1, 0)
   roof.castShadow = true
   chassisGroup.add(roof)
 
+  // Bumpers — front (+X), rear (-X).
   const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), trimMat)
-  frontBumper.position.set(-2.0, -0.15, 0)
+  frontBumper.position.set(2.0, -0.15, 0)
   frontBumper.castShadow = true
   chassisGroup.add(frontBumper)
 
   const rearBumper = frontBumper.clone()
-  rearBumper.position.x = 2.0
+  rearBumper.position.x = -2.0
   chassisGroup.add(rearBumper)
 
+  // Headlights face the +X direction (front).
   const headlightGeo = new THREE.SphereGeometry(0.18, 16, 10)
   const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
   for (const z of [-0.7, 0.7]) {
     const hl = new THREE.Mesh(headlightGeo, headlightMat)
-    hl.position.set(-1.98, 0.05, z)
+    hl.position.set(1.98, 0.05, z)
     chassisGroup.add(hl)
   }
 
+  // Taillights at the back (-X), red.
   const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
   for (const z of [-0.7, 0.7]) {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), taillightMat)
-    tl.position.set(1.98, 0.1, z)
+    tl.position.set(-1.98, 0.1, z)
     chassisGroup.add(tl)
   }
 
@@ -163,17 +171,20 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   }
 
   function applyInput(inputState) {
+    // +X = forward, so W gives positive engine force.
     const engineForce = inputState.forward
-      ? -MAX_ENGINE_FORCE
+      ? MAX_ENGINE_FORCE
       : inputState.backward
-        ? -REVERSE_FORCE
+        ? REVERSE_FORCE
         : 0
 
     const steer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
 
+    // Engine force on rear wheels (indices 2,3 are at -X = rear).
     vehicle.applyEngineForce(engineForce, 2)
     vehicle.applyEngineForce(engineForce, 3)
 
+    // Steering on front wheels (indices 0,1 at +X = front).
     vehicle.setSteeringValue(steer, 0)
     vehicle.setSteeringValue(steer, 1)
 

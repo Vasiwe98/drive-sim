@@ -152,14 +152,17 @@ export function buildWorld(scene, world) {
   addJumpPad(world, scene, { x: 55, y: 0, z: 0 })
   addJumpPad(world, scene, { x: 0, y: 0, z: 55 })
 
-  // --- Invisible boundary walls (~200m square arena)
+  // --- Boundary walls. Visible (warm grey) so the player knows where the
+  //     arena ends. Thicker than before (2m) for robust collision. Taller
+  //     (16m) so jumps off ramps can't clear them.
   const half = ARENA_SIZE / 2
-  const wallH = 10
+  const wallH = 16
   const wallY = wallH / 2
-  addStaticBox(world, scene, { x: half, y: wallY, z: 0 }, { x: 1, y: wallH, z: ARENA_SIZE })
-  addStaticBox(world, scene, { x: -half, y: wallY, z: 0 }, { x: 1, y: wallH, z: ARENA_SIZE })
-  addStaticBox(world, scene, { x: 0, y: wallY, z: half }, { x: ARENA_SIZE, y: wallH, z: 1 })
-  addStaticBox(world, scene, { x: 0, y: wallY, z: -half }, { x: ARENA_SIZE, y: wallH, z: 1 })
+  const wallColor = 0x6b5e54
+  addStaticBox(world, scene, { x: half, y: wallY, z: 0 }, { x: 2, y: wallH, z: ARENA_SIZE }, null, wallColor)
+  addStaticBox(world, scene, { x: -half, y: wallY, z: 0 }, { x: 2, y: wallH, z: ARENA_SIZE }, null, wallColor)
+  addStaticBox(world, scene, { x: 0, y: wallY, z: half }, { x: ARENA_SIZE, y: wallH, z: 2 }, null, wallColor)
+  addStaticBox(world, scene, { x: 0, y: wallY, z: -half }, { x: ARENA_SIZE, y: wallH, z: 2 }, null, wallColor)
 
   // Spawn just above equilibrium height (calculated for thin chassis + wheels
   // at corners) so there's almost no initial drop and the chassis settles flat.

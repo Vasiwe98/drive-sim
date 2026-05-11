@@ -1,8 +1,7 @@
 import * as THREE from 'three'
 
-// Vehicle convention in this project: -X is the car's forward direction
-// (headlights face -X, cabin shifts toward -X, etc.). Offsets and the
-// _forward vector below match this convention.
+// Vehicle convention: +X is the car's forward direction (headlights at +X).
+// Camera offsets and the _forward vector use this convention.
 
 const MODE_FOLLOW = 0
 const MODE_FIRST = 1
@@ -22,10 +21,10 @@ export class CameraRig {
     this.posLerp = 0.1
     this.lookLerp = 0.15
 
-    // Local-space offsets relative to chassis (-X is forward).
-    // Behind = +X, above = +Y. Inside the car cabin shifts toward -X.
-    this.followOffset = new THREE.Vector3(8, 4, 0)
-    this.hoodOffset = new THREE.Vector3(-1.5, 1.2, 0)
+    // Local-space offsets relative to chassis (+X is forward, standard).
+    // Behind = -X, above = +Y. Cabin/hood is at +X.
+    this.followOffset = new THREE.Vector3(-8, 4, 0)
+    this.hoodOffset = new THREE.Vector3(1.5, 1.2, 0)
     this.topdownHeight = 50
 
     this._targetPos = new THREE.Vector3()
@@ -86,8 +85,8 @@ export class CameraRig {
         this._desiredPos.copy(this._targetPos).add(this._offset)
         this.camera.position.copy(this._desiredPos)
 
-        // Forward = -X in chassis local space.
-        this._forward.set(-1, 0, 0).applyQuaternion(this._targetQuat)
+        // Forward = +X in chassis local space (standard convention).
+        this._forward.set(1, 0, 0).applyQuaternion(this._targetQuat)
         this._lookAt.copy(this._desiredPos).add(this._forward)
         this.camera.lookAt(this._lookAt)
         break
