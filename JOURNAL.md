@@ -45,3 +45,19 @@ Cannon-es physics wired up in `src/physics.js`: gravity, SAP broadphase, allow-s
 Bundle grew from 487 KB → 579 KB (122 → 149 KB gzipped) with the addition of cannon-es. Still well within reasonable for a single-page demo.
 
 [LINKEDIN] In 2014, "make a box fall onto a plane" meant: derive the verlet integration, implement collision detection between an AABB and a half-space, integrate quaternions for orientation. In 2026, it's `new CANNON.Body({ mass: 5, shape: new CANNON.Box(...) })` plus `boxMesh.position.copy(boxBody.position)` once per frame. Cannon-es handles the rest.
+
+## 2026-05-10 — Parallel tab moment
+
+Tasks 3 (vehicle physics), 5 (procedural world), and 6 (cameras) are now safe to develop in parallel — physics world exists, contracts are locked, files don't overlap. Spawned two extra Claude Code tabs working on world.js and cameras.js. This tab keeps the orchestrator role: vehicle.js (Task 3) and then vehicle visuals (Task 4), then integration in main.js.
+
+[LINKEDIN] In 2014 I would have built this serially over a weekend. In 2026, three Claude Code tabs are simultaneously implementing the car, the playground, and the camera system in parallel — each with a clearly defined interface contract. The wall-clock time for ~3 hours of work might collapse to 1.
+
+## 2026-05-10 — Task 3 complete
+
+`src/vehicle.js` has the RaycastVehicle factory with verbatim params from cannon-es `examples/raycast_vehicle.html`: chassis Box(2, 0.5, 1) at mass 150, four wheels at the corners with frictionSlip 1.4, suspensionStiffness 30, dampingRelaxation 2.3, dampingCompression 4.4, maxSuspensionForce 100000, rollInfluence 0.01. Rear-wheel drive (engine force on indices 2/3), front-wheel steer (0/1), handbrake on Space.
+
+`src/input.js` handles WASD/arrow keys plus Space brake. Edge-event hook `onKeyDownOnce` ready for the C-key camera cycle later.
+
+`src/main.js` swapped the test box for the vehicle. Temporary orange chassis cube renders until Task 4 adds proper visuals. OrbitControls target lerps toward the car so it stays framed during testing.
+
+[LINKEDIN] Bullet physics' RaycastVehicle algorithm (which cannon-es ports) — four ray-cast wheels, per-wheel suspension forces, slip-based friction, custom rotational speed when sliding — is decades of academic research and Bullet engineering. In 2026 it's `new CANNON.RaycastVehicle({ chassisBody })` plus `addWheel({...})` four times. I copied the params verbatim from the cannon-es example as the plan instructed; reinventing them would have been the death-spiral risk flagged in `PLAN.md` risk #2.
