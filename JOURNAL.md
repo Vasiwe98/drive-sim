@@ -71,3 +71,11 @@ API refactor: `createVehicle` now exposes `applyInput(input)`, `syncMeshes()`, a
 Also gated `cannon-es-debugger` behind `?debug` query param — defaulting it off now that real meshes are visible.
 
 [LINKEDIN] One non-obvious gotcha that would've killed an hour in 2014: Three.js's CylinderGeometry has its default axis along Y, but cannon-es builds the wheel's world transform assuming the wheel's local X axis is the axle. Solution is a single line: `wheelGeo.rotateZ(Math.PI/2)` bakes Y→X into the geometry once, then the per-frame physics quaternion just works. In 2014 I would have figured this out by drag-testing until something looked right; in 2026 it's flagged in the plan ahead of time and fixed in one line.
+
+## 2026-05-10 — Task 7 done early (landing screen)
+
+Did the landing screen out of order while the parallel tabs work on world.js and cameras.js — they don't touch index.html or ui.js, so safe to land now. Card-style overlay with the title, a controls list with key-style spans (W/A/S/D, Space, C), a big orange Start button, and a footer linking back to the GitHub repo. Backdrop is a translucent dark gradient with `backdrop-filter: blur(8px)` so the 3D scene is faintly visible underneath.
+
+`src/ui.js` exposes `isStarted()` and `hideLanding()`. `main.js` gates `car.applyInput(input)` behind `ui.isStarted()` so the car stays still until Start is hit (the physics loop and rendering still run — it's idle, not paused).
+
+[LINKEDIN] In 2014 the "title screen" of my Blender project was a print statement in the terminal. In 2026, ~80 lines of HTML/CSS give me a card-based start screen with backdrop blur, key-style monospace badges, a big tactile orange CTA, and a footer link to the repo — all rendered on top of a live, paused 3D world that's already loaded behind it.

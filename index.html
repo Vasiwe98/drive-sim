@@ -8,10 +8,115 @@
     <style>
       html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #87ceeb; font-family: system-ui, sans-serif; }
       #game { display: block; width: 100vw; height: 100vh; }
+
+      #landing {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(180deg, rgba(20, 24, 40, 0.55) 0%, rgba(20, 24, 40, 0.78) 100%);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 10;
+        transition: opacity 0.3s ease;
+      }
+      #landing.hidden { opacity: 0; pointer-events: none; }
+
+      .landing-card {
+        background: rgba(255, 255, 255, 0.96);
+        border-radius: 18px;
+        padding: 36px 44px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        max-width: 460px;
+        width: calc(100vw - 32px);
+        color: #1a1d2e;
+        text-align: center;
+      }
+      .landing-card h1 {
+        margin: 0 0 6px;
+        font-size: 38px;
+        letter-spacing: 4px;
+        color: #ff6b35;
+      }
+      .landing-card .subtitle {
+        margin: 0 0 22px;
+        font-size: 14px;
+        color: #555;
+        letter-spacing: 0.5px;
+      }
+      .controls-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px 14px;
+        margin: 0 0 24px;
+        text-align: left;
+        font-size: 14px;
+      }
+      .controls-grid .keys { display: flex; gap: 4px; }
+      .key {
+        display: inline-block;
+        background: #1a1d2e;
+        color: white;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 12px;
+        min-width: 16px;
+        text-align: center;
+        font-weight: 600;
+      }
+      .desc { color: #444; }
+
+      #start-btn {
+        background: #ff6b35;
+        color: white;
+        border: 0;
+        border-radius: 10px;
+        padding: 14px 32px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.45);
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+      }
+      #start-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(255, 107, 53, 0.55); }
+      #start-btn:active { transform: translateY(0); }
+
+      .footer {
+        margin-top: 18px;
+        font-size: 11px;
+        color: #888;
+      }
+      .footer a { color: #666; text-decoration: none; border-bottom: 1px dotted #aaa; }
     </style>
   </head>
   <body>
     <canvas id="game"></canvas>
+
+    <div id="landing">
+      <div class="landing-card">
+        <h1>DRIVE SIM</h1>
+        <p class="subtitle">A 2026 Claude Code rebuild of a 2014 Blender project</p>
+        <div class="controls-grid">
+          <div class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></div>
+          <div class="desc">Drive (arrow keys work too)</div>
+          <div class="keys"><span class="key">Space</span></div>
+          <div class="desc">Handbrake</div>
+          <div class="keys"><span class="key">C</span></div>
+          <div class="desc">Cycle camera mode</div>
+          <div class="keys"><span class="key">Mouse</span></div>
+          <div class="desc">Orbit (in free-camera mode)</div>
+        </div>
+        <button id="start-btn">START DRIVING</button>
+        <div class="footer">
+          Built with Three.js + Cannon-es ·
+          <a href="https://github.com/Vasiwe98/drive-sim" target="_blank" rel="noopener">source on GitHub</a>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
