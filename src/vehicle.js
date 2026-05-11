@@ -8,7 +8,11 @@ const REVERSE_FORCE = -1200
 const HANDBRAKE_FORCE = 1000000
 const ROLLING_BRAKE = 4
 
-const CHASSIS_HALF = { x: 2, y: 0.5, z: 1 }
+// Visual chassis is ~1m tall, but the physics collider is intentionally
+// thinner so it can't punch through the ground when the car tilts on
+// landings. Visual hood/mid/cabin overlay the silhouette; this is only
+// the collision box.
+const CHASSIS_HALF = { x: 2, y: 0.3, z: 1 }
 const WHEEL_RADIUS = 0.5
 const WHEEL_WIDTH = 0.35
 
@@ -31,11 +35,11 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const wheelOptions = {
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
-    suspensionStiffness: 30,
+    suspensionStiffness: 40,
     suspensionRestLength: 0.3,
-    frictionSlip: 2.5,      // 1.4 (cannon example) too slippy; 5 too judder — 2.5 is the middle ground
-    dampingRelaxation: 2.3,
-    dampingCompression: 4.4,
+    frictionSlip: 2.5,
+    dampingRelaxation: 5,     // bumped from 2.3 — faster settle, less landing oscillation
+    dampingCompression: 8,    // bumped from 4.4
     maxSuspensionForce: 100000,
     rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
@@ -45,18 +49,16 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     useCustomSlidingRotationalSpeed: true,
   }
 
-  // Wheels mounted BELOW chassis center (y = -0.3) so they extend past the
-  // chassis box (half-height 0.5) and make ground contact themselves — not
-  // the chassis box. Without this, the chassis bottoms out on the plane
-  // before the wheel raycasts can grip and engine force goes nowhere.
-  // Indices 0=FL, 1=FR, 2=RL, 3=RR. -X = forward (headlights/cabin side).
-  wheelOptions.chassisConnectionPointLocal.set(-1, -0.3, 1)
+  // Wheels mounted just below the (thin) chassis collider and at proper car
+  // proportions — wheels nearer the corners (x = ±1.65) keep the wheelbase
+  // wide for stability. Indices 0=FL, 1=FR, 2=RL, 3=RR. -X = forward.
+  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, 0.95)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(-1, -0.3, -1)
+  wheelOptions.chassisConnectionPointLocal.set(-1.65, -0.15, -0.95)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(1, -0.3, 1)
+  wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, 0.95)
   vehicle.addWheel(wheelOptions)
-  wheelOptions.chassisConnectionPointLocal.set(1, -0.3, -1)
+  wheelOptions.chassisConnectionPointLocal.set(1.65, -0.15, -0.95)
   vehicle.addWheel(wheelOptions)
 
   vehicle.addToWorld(world)

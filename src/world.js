@@ -161,5 +161,7 @@ export function buildWorld(scene, world) {
   addStaticBox(world, scene, { x: 0, y: wallY, z: half }, { x: ARENA_SIZE, y: wallH, z: 1 })
   addStaticBox(world, scene, { x: 0, y: wallY, z: -half }, { x: ARENA_SIZE, y: wallH, z: 1 })
 
-  return { spawnPos: new CANNON.Vec3(0, 1.5, 0) }
+  // Spawn just above equilibrium height (calculated for thin chassis + wheels
+  // at corners) so there's almost no initial drop and the chassis settles flat.
+  return { spawnPos: new CANNON.Vec3(0, 0.9, 0) }
 }
