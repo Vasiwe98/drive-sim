@@ -32,6 +32,9 @@ export function createRampController(car, ramps, input) {
   const _fwdLocal = new CANNON.Vec3(1, 0, 0)
   const _fwdWorld = new CANNON.Vec3()
   const _forceScratch = new CANNON.Vec3()
+  const _yawDelta = new CANNON.Quaternion()
+  const _yawAxis = new CANNON.Vec3(0, 1, 0)
+  const _qScratch = new CANNON.Quaternion()
 
   function update(dt) {
     const cx = car.chassisBody.position.x
@@ -128,13 +131,12 @@ export function createRampController(car, ramps, input) {
         v.z *= 0.97
       }
 
-      // Yaw steering — speed-sensitive so the car doesn't spin in place at
-      // low speed. yawFactor scales linearly from YAW_MIN_FACTOR at zero
-      // speed up to 1.0 once we hit YAW_SPEED_SCALE_MPS.
-      const horizontalSpeed = Math.sqrt(
-        car.chassisBody.velocity.x * car.chassisBody.velocity.x +
-        car.chassisBody.velocity.z * car.chassisBody.velocity.z
-      )
+      // ---- Yaw + lateral grip (fully manual; bypass cannon's angular
+      // dynamics so nothing can perturb the chassis on the ramp). ----
+      const v = car.chassisBody.velocity
+      const horizontalSpeed = Math.sqrt(v.x * v.x + v.z * v.z)
+
+      // Speed-sensitive yaw rate.
       const yawFactor = Math.max(
         YAW_MIN_FACTOR,
         Math.min(1, horizontalSpeed / YAW_SPEED_SCALE_MPS)
@@ -142,11 +144,29 @@ export function createRampController(car, ramps, input) {
       let yawRate = 0
       if (input.left) yawRate = MAX_YAW_RATE_FAST * yawFactor
       else if (input.right) yawRate = -MAX_YAW_RATE_FAST * yawFactor
-      car.chassisBody.angularVelocity.y = yawRate
-      // Belt and suspenders — explicitly zero pitch/roll angular velocity
-      // (angularFactor already filters torques but stray velocity can persist).
-      car.chassisBody.angularVelocity.x = 0
-      car.chassisBody.angularVelocity.z = 0
+
+      // Integrate yaw directly into the chassis quaternion — no angular
+      // velocity needed, so cannon's integrator has nothing to corrupt.
+      if (yawRate !== 0) {
+        _yawDelta.setFromAxisAngle(_yawAxis, yawRate * dt)
+        car.chassisBody.quaternion.mult(_yawDelta, _qScratch)
+        car.chassisBody.quaternion.copy(_qScratch)
+      }
+      // Zero ALL angular velocity each frame so nothing accumulates.
+      car.chassisBody.angularVelocity.set(0, 0, 0)
+
+      // Damp lateral velocity (anything perpendicular to chassis-forward).
+      // Simulates wheel grip — keeps the car from drifting sideways off
+      // the ramp. Forward component is preserved; lateral decays.
+      // _fwdWorld is the unit forward vector (computed above).
+      const fwdDot = v.x * _fwdWorld.x + v.z * _fwdWorld.z
+      const fwdX = _fwdWorld.x * fwdDot
+      const fwdZ = _fwdWorld.z * fwdDot
+      const latX = v.x - fwdX
+      const latZ = v.z - fwdZ
+      const LATERAL_DAMP = 0.85
+      v.x = fwdX + latX * LATERAL_DAMP
+      v.z = fwdZ + latZ * LATERAL_DAMP
     } else {
       car.setSuspendVehicleControl(false)
     }
