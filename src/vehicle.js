@@ -184,14 +184,14 @@ export const VEHICLE_PROFILES = {
     steerHighSpeedKmh: 210,
     steerMinFactor: 0.30,
     linearDamping: 0.11,
-    angularDamping: 0.40,
+    angularDamping: 0.35,
     wheel: {
       suspensionStiffness: 34,
-      dampingRelaxation: 10,
-      dampingCompression: 15,
+      dampingRelaxation: 9,
+      dampingCompression: 14,
       frictionSlip: 5.5,
       rollInfluence: 0.02,
-      maxSuspensionForce: 600000,
+      maxSuspensionForce: 500000,
     },
   },
   suv: {
@@ -205,14 +205,14 @@ export const VEHICLE_PROFILES = {
     steerHighSpeedKmh: 190,
     steerMinFactor: 0.34,
     linearDamping: 0.13,
-    angularDamping: 0.50,
+    angularDamping: 0.40,
     wheel: {
       suspensionStiffness: 28,
-      dampingRelaxation: 11,
-      dampingCompression: 16,
+      dampingRelaxation: 10,
+      dampingCompression: 14,
       frictionSlip: 4.5,
       rollInfluence: 0.04,
-      maxSuspensionForce: 700000,
+      maxSuspensionForce: 500000,
     },
   },
   truck: {
@@ -226,14 +226,14 @@ export const VEHICLE_PROFILES = {
     steerHighSpeedKmh: 170,
     steerMinFactor: 0.38,
     linearDamping: 0.15,
-    angularDamping: 0.60,
+    angularDamping: 0.45,
     wheel: {
       suspensionStiffness: 22,
-      dampingRelaxation: 13,
-      dampingCompression: 18,
+      dampingRelaxation: 10,
+      dampingCompression: 14,
       frictionSlip: 4.0,
       rollInfluence: 0.06,
-      maxSuspensionForce: 800000,
+      maxSuspensionForce: 500000,
     },
   },
 }
@@ -336,16 +336,27 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   vehicle.addToWorld(world)
 
-  // Mutate live physics state to match a profile. Called on every style
-  // swap. chassisBody mass needs updateMassProperties to recompute the
-  // inertia tensor; wheelInfo fields are read each step so direct
-  // assignment is enough.
+  // Mutate live physics state to match a profile. Idempotent — skips when
+  // the profile is already active so the constructor's initial setBodyStyle
+  // call doesn't kick the freshly-built chassis.
+  //
+  // When the profile genuinely changes mid-drive, the old wheel
+  // suspensionLength still encodes the OLD equilibrium compression
+  // (g / (4 * old_stiffness)). With the new stiffness, that length
+  // produces a spring force that doesn't match the new chassis weight
+  // and the chassis drops/jumps until damping settles it. To kill that
+  // transient cleanly, we pre-set suspensionLength to the new
+  // equilibrium AND zero the chassis vertical velocity. The car keeps
+  // its horizontal velocity (no kinetic-energy loss), only the vertical
+  // transient is absorbed.
   function applyProfile(p) {
+    if (p === profile) return
     profile = p
     chassisBody.mass = p.mass
     chassisBody.updateMassProperties()
     chassisBody.linearDamping = p.linearDamping
     chassisBody.angularDamping = p.angularDamping
+    const newEqCompression = 9.82 / (4 * p.wheel.suspensionStiffness)
     for (const w of vehicle.wheelInfos) {
       w.suspensionStiffness = p.wheel.suspensionStiffness
       w.dampingRelaxation = p.wheel.dampingRelaxation
@@ -353,7 +364,10 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
       w.frictionSlip = p.wheel.frictionSlip
       w.rollInfluence = p.wheel.rollInfluence
       w.maxSuspensionForce = p.wheel.maxSuspensionForce
+      w.suspensionLength = w.suspensionRestLength - newEqCompression
+      w.suspensionRelativeVelocity = 0
     }
+    chassisBody.velocity.y = 0
   }
 
   // --- Visuals ---
