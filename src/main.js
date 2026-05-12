@@ -40,10 +40,13 @@ const spawnPos = spawnMode === 'deck'
 const car = createVehicle(world, scene, spawnPos, initialSettings.color, initialSettings.style)
 const rampController = createRampController(car, ramps, input)
 
+ui.setVehicleName(car.getProfileName())
+
 onSettingsChange((s) => {
   car.setColor(s.color)
   car.setBodyStyle(s.style)
   setTimeOfDay(s.time)
+  ui.setVehicleName(car.getProfileName())
 })
 
 const cameraRig = new CameraRig(camera, controls)

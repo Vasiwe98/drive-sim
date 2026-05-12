@@ -4,6 +4,23 @@ Append-only log of decisions, surprises, blog-worthy moments. Entries tagged `[L
 
 ---
 
+## 2026-05-12 — Per-vehicle driving profiles (911 / M5 / G-Wagon / F-350)
+
+Each style now picks a real-world car and tunes mass, engine force, suspension, friction, and steering accordingly:
+
+- **Coupe → Porsche 911**: 1500 kg, light, sharp 0.50 rad steer, top ~310 km/h, frictionSlip 6.
+- **Sedan → BMW M5**: 1900 kg, a bit softer suspension, top ~232 km/h.
+- **SUV → Mercedes G-Wagon**: 2500 kg, soft suspension + high roll influence — feels boaty.
+- **Truck → Ford F-350**: 3500 kg, slow steer (0.36 rad), lowest grip, biggest handbrake force, top ~107 km/h.
+
+Implemented as a `VEHICLE_PROFILES` table in `vehicle.js`. `setBodyStyle` calls `applyProfile` synchronously — chassisBody.mass + updateMassProperties, linearDamping, angularDamping, and every wheelInfo's stiffness/damping/friction/rollInfluence/maxSuspensionForce flip in place. applyInput reads `profile.engineForce / .maxSteer / .handbrakeForce` each frame, so live profile changes take effect immediately. HUD now shows the active nickname.
+
+Physics chassis collider and wheel mount positions stay byte-for-byte identical across profiles — that's what guarantees the ramps and bridge keep working. The handling difference is *only* in how the chassis responds to force, not in where the wheels are.
+
+[LINKEDIN] Asked Claude to make each car body drive like a different real vehicle. Got a 35-line config table where Porsche / BMW / G-Wagon / F-350 each get distinct mass, engine, suspension, and grip — switchable in real time from the settings menu. The Coupe pulls 312 km/h and corners like it's on rails; the F-350 redlines at 107 km/h and pushes through corners like it weighs three tonnes (because we told the engine it does).
+
+---
+
 ## 2026-05-12 — Polish round: real cars + sun & moon
 
 Three rapid follow-ups after Task 9 shipped:

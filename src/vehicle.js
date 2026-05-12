@@ -145,19 +145,98 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 //
-// Tuning target: Porsche 911 (992 Carrera S).
-//   mass 1500 kg, 0-100 km/h ~3.5s, top speed ~310 km/h, high tire grip.
-//   At F=13000N / m=1500kg average accel ≈ 8.7 m/s² → 0-100 km/h ≈ 3.2s.
-//   Top speed at equilibrium: F_engine = m * linearDamping * v
-//      → v_top = 13000 / (1500 * 0.10) = 87 m/s ≈ 313 km/h.
-const MAX_STEER = 0.5
-const MAX_ENGINE_FORCE = 13000
-const REVERSE_FORCE = -6000
-const HANDBRAKE_FORCE = 50000
-const ROLLING_BRAKE = 20
-// Steering reduces at high speed for stability (real cars + Porsche-like).
-const STEER_HIGH_SPEED_KMH = 220   // above this, steering scales down hard
-const STEER_MIN_FACTOR = 0.3
+// Per-vehicle driving profile. Each style picks a real-world target so
+// the four cars *feel* different even though they share the same chassis
+// collider and wheel mounts. Top speed at equilibrium is engineForce /
+// (mass * linearDamping); 0-100 km/h is approximately mass * 27.8 / force.
+// Suspension stiffness/damping affects body roll and bump response;
+// frictionSlip changes grip (low slip = drifty truck feel).
+export const VEHICLE_PROFILES = {
+  coupe: {
+    nickname: 'Porsche 911',
+    mass: 1500,
+    engineForce: 13000,
+    reverseForce: -6000,
+    handbrakeForce: 50000,
+    rollingBrake: 20,
+    maxSteer: 0.50,
+    steerHighSpeedKmh: 220,
+    steerMinFactor: 0.30,
+    linearDamping: 0.10,
+    angularDamping: 0.30,
+    wheel: {
+      suspensionStiffness: 40,
+      dampingRelaxation: 9,
+      dampingCompression: 14,
+      frictionSlip: 6.0,
+      rollInfluence: 0.01,
+      maxSuspensionForce: 500000,
+    },
+  },
+  sedan: {
+    nickname: 'BMW M5',
+    mass: 1900,
+    engineForce: 13500,
+    reverseForce: -6500,
+    handbrakeForce: 55000,
+    rollingBrake: 25,
+    maxSteer: 0.46,
+    steerHighSpeedKmh: 210,
+    steerMinFactor: 0.30,
+    linearDamping: 0.11,
+    angularDamping: 0.40,
+    wheel: {
+      suspensionStiffness: 34,
+      dampingRelaxation: 10,
+      dampingCompression: 15,
+      frictionSlip: 5.5,
+      rollInfluence: 0.02,
+      maxSuspensionForce: 600000,
+    },
+  },
+  suv: {
+    nickname: 'Mercedes G-Wagon',
+    mass: 2500,
+    engineForce: 14500,
+    reverseForce: -7000,
+    handbrakeForce: 65000,
+    rollingBrake: 30,
+    maxSteer: 0.40,
+    steerHighSpeedKmh: 190,
+    steerMinFactor: 0.34,
+    linearDamping: 0.13,
+    angularDamping: 0.50,
+    wheel: {
+      suspensionStiffness: 28,
+      dampingRelaxation: 11,
+      dampingCompression: 16,
+      frictionSlip: 4.5,
+      rollInfluence: 0.04,
+      maxSuspensionForce: 700000,
+    },
+  },
+  truck: {
+    nickname: 'Ford F-350',
+    mass: 3500,
+    engineForce: 15500,
+    reverseForce: -8000,
+    handbrakeForce: 90000,
+    rollingBrake: 40,
+    maxSteer: 0.36,
+    steerHighSpeedKmh: 170,
+    steerMinFactor: 0.38,
+    linearDamping: 0.15,
+    angularDamping: 0.60,
+    wheel: {
+      suspensionStiffness: 22,
+      dampingRelaxation: 13,
+      dampingCompression: 18,
+      frictionSlip: 4.0,
+      rollInfluence: 0.06,
+      maxSuspensionForce: 800000,
+    },
+  },
+}
 
 // Chassis collider sits at cabin level (offset upward in chassis local frame).
 const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
@@ -206,30 +285,22 @@ for (const s of ['coupe', 'sedan', 'suv', 'truck']) {
 const VISUAL_CAR_LENGTH = 3.8
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22, style = 'coupe') {
+  let profile = VEHICLE_PROFILES[style] || VEHICLE_PROFILES.coupe
+
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
-  const chassisBody = new CANNON.Body({ mass: 1500 }) // Porsche-like mass
+  const chassisBody = new CANNON.Body({ mass: profile.mass })
   // No collider offset. A previous +0.5m offset (to sit at cabin level)
-  // created a "trap zone" at the bridge deck: when the collider rested on
-  // the deck top (chassis_y=3.0 with offset=0.5), the wheel mounts at
-  // chassis_y - 0.15 = 2.85 sat BELOW the deck top (3.25). Wheel raycasts
-  // started inside the deck box, hit the deck UNDERSIDE, returned
-  // hitNormalWorld = (0,-1,0), and the spring force was applied DOWNWARD
-  // — the chassis got pulled into the deck and stuck. With offset=0, the
-  // collider rests at chassis_y=3.5 where wheel mounts (3.35) are above
-  // the deck top, so raycasts hit the top face normally and the spring
-  // force pushes the chassis UP out of the trap. Ramps have no physics
-  // body (controller-driven), so the original "above ramp edge" rationale
-  // for the offset is moot.
+  // created a "trap zone" at the bridge deck — see git history for the
+  // full debug story. Ramps have no physics body so the offset's original
+  // motivation (sit above ramp edges) is moot.
   chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
   // Lock pitch + roll. Only yaw allowed (for steering).
   chassisBody.angularFactor.set(0, 1, 0)
-  chassisBody.angularDamping = 0.3
-  // linearDamping doubles as our air-resistance proxy. With mass 1500 and
-  // engine 13000N, this sets the top speed (~87 m/s ≈ 310 km/h).
-  chassisBody.linearDamping = 0.10
+  chassisBody.angularDamping = profile.angularDamping
+  chassisBody.linearDamping = profile.linearDamping
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -239,21 +310,18 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     indexUpAxis: 1,
   })
 
-  // Wheel params tuned for a 1500 kg sports car. Stiffness * compression *
-  // mass = quarter-weight → equilibrium compression is independent of mass
-  // (stays around 6 cm at stiffness 40), so the same stiffness works.
-  // Damping and maxSuspensionForce scale up for the heavier load.
-  // frictionSlip = 6 gives Porsche-like high-grip tire behaviour.
+  // Wheel params built from the current profile. setBodyStyle mutates
+  // each wheelInfo's fields directly when the user swaps vehicles.
   const wheelOptions = {
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
-    suspensionStiffness: 40,
+    suspensionStiffness: profile.wheel.suspensionStiffness,
     suspensionRestLength: 0.3,
-    frictionSlip: 6,
-    dampingRelaxation: 9,
-    dampingCompression: 14,
-    maxSuspensionForce: 500000,
-    rollInfluence: 0.01,
+    frictionSlip: profile.wheel.frictionSlip,
+    dampingRelaxation: profile.wheel.dampingRelaxation,
+    dampingCompression: profile.wheel.dampingCompression,
+    maxSuspensionForce: profile.wheel.maxSuspensionForce,
+    rollInfluence: profile.wheel.rollInfluence,
     axleLocal: new CANNON.Vec3(0, 0, 1),
     chassisConnectionPointLocal: new CANNON.Vec3(),
     maxSuspensionTravel: 0.3,
@@ -268,6 +336,26 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   vehicle.addToWorld(world)
 
+  // Mutate live physics state to match a profile. Called on every style
+  // swap. chassisBody mass needs updateMassProperties to recompute the
+  // inertia tensor; wheelInfo fields are read each step so direct
+  // assignment is enough.
+  function applyProfile(p) {
+    profile = p
+    chassisBody.mass = p.mass
+    chassisBody.updateMassProperties()
+    chassisBody.linearDamping = p.linearDamping
+    chassisBody.angularDamping = p.angularDamping
+    for (const w of vehicle.wheelInfos) {
+      w.suspensionStiffness = p.wheel.suspensionStiffness
+      w.dampingRelaxation = p.wheel.dampingRelaxation
+      w.dampingCompression = p.wheel.dampingCompression
+      w.frictionSlip = p.wheel.frictionSlip
+      w.rollInfluence = p.wheel.rollInfluence
+      w.maxSuspensionForce = p.wheel.maxSuspensionForce
+    }
+  }
+
   // --- Visuals ---
   const chassisGroup = new THREE.Group()
   scene.add(chassisGroup)
@@ -280,6 +368,12 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   let activeBodyMats = []
 
   async function setBodyStyle(nextStyle) {
+    // Apply the physics profile synchronously — engine, mass, suspension
+    // all flip immediately. The visual model swap runs asynchronously
+    // below (one frame of delay max since models are pre-loaded).
+    const nextProfile = VEHICLE_PROFILES[nextStyle] || VEHICLE_PROFILES.coupe
+    applyProfile(nextProfile)
+
     // Dispose old chassis-mesh children (geometries + cloned materials).
     while (chassisGroup.children.length) {
       const child = chassisGroup.children[0]
@@ -320,10 +414,11 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
       activeBodyMats.push(cloned)
     })
 
-    // Orientation: GLTF spec is -Z forward; chassis-forward is local +X.
-    // R_y(-π/2) maps local -Z → local +X, aligning model-forward with
-    // chassis-forward.
-    inst.rotation.y = -Math.PI / 2
+    // Orientation: Kenney's UnityGLTF cars author forward as local +Z.
+    // R_y(+π/2) maps local +Z → local +X, aligning model-forward with
+    // chassis-forward (+X). Empirically verified — flipping the sign
+    // makes the cars drive in reverse.
+    inst.rotation.y = Math.PI / 2
 
     // Uniform scale so the longest horizontal axis matches the physics
     // chassis length. Compute the bbox AFTER rotation so X/Z swap is
@@ -335,13 +430,14 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     inst.scale.setScalar(scale)
 
     // Re-bbox at final scale and centre on X/Z. Place model bottom at
-    // chassis-local Y = -0.3 — body floor sits just above the wheel
-    // centres (wheels span chassis-local [-0.89, +0.11] at suspension
-    // rest), so most of the tyre is visible and the body looks supported.
+    // chassis-local Y = -0.55 — close to the wheel centres at rest
+    // (wheels span chassis-local [-0.89, +0.11]), so the body hugs the
+    // wheels without floating. Purely a visual offset; the physics
+    // chassis collider and wheel mounts are unchanged.
     inst.updateMatrixWorld(true)
     bbox.setFromObject(inst)
     const centre = bbox.getCenter(new THREE.Vector3())
-    inst.position.set(-centre.x, -bbox.min.y - 0.3, -centre.z)
+    inst.position.set(-centre.x, -bbox.min.y - 0.55, -centre.z)
 
     chassisGroup.add(inst)
   }
@@ -390,18 +486,18 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     }
 
     const engineForce = inputState.forward
-      ? MAX_ENGINE_FORCE
+      ? profile.engineForce
       : inputState.backward
-        ? REVERSE_FORCE
+        ? profile.reverseForce
         : 0
 
     // Speed-sensitive steering: less wheel turn at high speed = stable.
     const speedKmh = getSpeedKmh()
     const steerFactor = Math.max(
-      STEER_MIN_FACTOR,
-      1 - speedKmh / STEER_HIGH_SPEED_KMH * (1 - STEER_MIN_FACTOR)
+      profile.steerMinFactor,
+      1 - speedKmh / profile.steerHighSpeedKmh * (1 - profile.steerMinFactor)
     )
-    const rawSteer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
+    const rawSteer = inputState.left ? profile.maxSteer : inputState.right ? -profile.maxSteer : 0
     const steer = rawSteer * steerFactor
 
     vehicle.applyEngineForce(engineForce, 2)
@@ -409,8 +505,12 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     vehicle.setSteeringValue(steer, 0)
     vehicle.setSteeringValue(steer, 1)
 
-    const brake = inputState.brake ? HANDBRAKE_FORCE : engineForce === 0 ? ROLLING_BRAKE : 0
+    const brake = inputState.brake ? profile.handbrakeForce : engineForce === 0 ? profile.rollingBrake : 0
     for (let i = 0; i < 4; i++) vehicle.setBrake(brake, i)
+  }
+
+  function getProfileName() {
+    return profile.nickname
   }
 
   // Scratch vectors for ramp wheel placement
@@ -481,6 +581,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     syncMeshes,
     setColor,
     setBodyStyle,
+    getProfileName,
     getSpeedKmh,
     setSuspendVehicleControl,
   }
