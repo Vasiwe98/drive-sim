@@ -4,6 +4,22 @@ Append-only log of decisions, surprises, blog-worthy moments. Entries tagged `[L
 
 ---
 
+## 2026-05-12 — Polish round: real cars + sun & moon
+
+Three rapid follow-ups after Task 9 shipped:
+
+**Windows bug found and obsoleted.** My per-style chassis refactor parameterized window placement as `cx + cabinLen / 2 - 0.04` — the sign was wrong, so the front window sat 4 cm *inside* the cabin (behind the opaque body face). Side windows survived. Rather than fix the procedural builder, I deleted it — see below.
+
+**Real car bodies via Kenney's CC0 Car Kit.** Replaced the four hand-stacked-box car bodies with real low-poly meshes from `kenney.nl/assets/car-kit`. Picked `sedan-sports.glb` (coupe), `sedan.glb`, `suv.glb`, `truck.glb` — total ~734 KB of GLB. Loaded async via `GLTFLoader`, pre-cached on init, cloned per-style-swap. The model wheels are hidden by name (`/wheel/i`) and we keep our procedural cylinder wheels — those sync to `RaycastVehicle.wheelInfos[i].worldTransform` every frame, so handling is byte-for-byte identical to what the user already validated. The body material is cloned from the model's `colormap` material and re-pointed at a shared `userColor` THREE.Color — the picker mutates that one Color, and every visible mesh tints with it.
+
+**Realistic sun and moon.** Added a yellow sphere + additive halo for the sun, a cool-white sphere for the moon, and an 800-point golden-spiral starfield. Day/night swap toggles their visibility along with the existing sky/fog/light tints. Sunlight is now warm-white `0xfff5d0` at intensity 1.2; moonlight is cool-blue `0xb8c8ff` at 0.18. The hemisphere light dims to almost nothing at night, so the moon and stars actually read as the dominant light sources.
+
+[LINKEDIN] In 2014, "four body styles" meant four separate Blender models — UV unwrap, texture bake, export each, manage four files. In 2026, I downloaded a CC0 pack of 25 cars in <60 seconds, wrote a 30-line model-loader that hides the model's wheels (we use our own physics wheels), and let the user swap between them in real time. The lift in fidelity per minute spent is roughly two orders of magnitude.
+
+[LINKEDIN] The trick to keeping the driving feel constant across body styles was to never let the physics layer learn about visuals. The chassis collider stays a single fixed-size invisible box; the visible model is a child group with a separate scale/rotation/material. The wheels are *not* the model's wheels — those are hidden — they're procedural cylinders synced to RaycastVehicle each frame. So an SUV and a coupe drive identically, because under the hood, *they're the same car*.
+
+---
+
 ## 2026-05-12 — Task 9: Settings menu (color + body style + day/night)
 
 Replaced the PLAN.md spec (color / maxSpeed / default camera) with something more visually punchy: color picker, body-style switcher (Coupe / Sedan / SUV / Muscle), and a Day/Night toggle. Saves to `localStorage` under one key; a custom `settings-change` event fans out to `vehicle.setColor`, `vehicle.setBodyStyle`, and `scene.setTimeOfDay`.

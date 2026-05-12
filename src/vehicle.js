@@ -1,5 +1,6 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
 // Monkey-patch CANNON.RaycastVehicle.castRay to extend the wheel ray length
 // from `restLength + radius` to `restLength + maxTravel + radius`.
@@ -172,85 +173,37 @@ export const WHEEL_MOUNTS = [
   new CANNON.Vec3(-1.65, -0.15, -0.95), // 3 = RR
 ]
 
-// Body-style chassis builders. Each adds visual-only meshes to a group.
-// Physics collider + wheel mounts are FIXED across styles; only the mesh
-// proportions change. Width matches the chassis ~1.95m. Y origin is the
-// chassis-collider centre.
-function addBox(group, size, pos, material) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), material)
-  m.position.set(pos[0], pos[1], pos[2])
-  m.castShadow = true
-  group.add(m)
-  return m
-}
+// GLB model loader. Each style maps to a .glb in /public/models/. Vite
+// serves them from BASE_URL + 'models/'. Models are CC0 from Kenney's
+// Car Kit (kenney.nl/assets/car-kit). Wheels in the .glb are hidden —
+// we keep the existing procedural cylinder wheels because they sync
+// to RaycastVehicle.wheelInfos[i].worldTransform every frame.
+const MODEL_BASE = import.meta.env.BASE_URL + 'models/'
+const _loader = new GLTFLoader()
+const _modelPromises = new Map()
 
-function addCabinWindows(group, glassMat, cx, cy, cabinLen, cabinWidth, winH) {
-  const sideZ = cabinWidth / 2 + 0.005
-  for (const z of [sideZ, -sideZ]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(cabinLen - 0.15, winH, 0.02), glassMat)
-    w.position.set(cx, cy, z)
-    group.add(w)
+function loadModel(style) {
+  if (!_modelPromises.has(style)) {
+    _modelPromises.set(style, new Promise((resolve, reject) => {
+      _loader.load(
+        `${MODEL_BASE}${style}.glb`,
+        (gltf) => resolve(gltf.scene),
+        undefined,
+        (err) => reject(err)
+      )
+    }))
   }
-  const fw = new THREE.Mesh(new THREE.BoxGeometry(0.02, winH, cabinWidth - 0.13), glassMat)
-  fw.position.set(cx + cabinLen / 2 - 0.04, cy, 0)
-  group.add(fw)
-  const rw = new THREE.Mesh(new THREE.BoxGeometry(0.02, winH, cabinWidth - 0.13), glassMat)
-  rw.position.set(cx - cabinLen / 2 + 0.04, cy, 0)
-  group.add(rw)
+  return _modelPromises.get(style)
 }
 
-function buildCoupe(g, m) {
-  addBox(g, [1.4,  0.70, 1.95], [ 1.30,  0.000, 0], m.body)  // hood
-  addBox(g, [1.0,  0.65, 1.95], [-1.40, -0.025, 0], m.body)  // trunk
-  addBox(g, [2.4,  0.60, 1.95], [ 0.00,  0.050, 0], m.body)  // mid
-  addBox(g, [2.0,  0.75, 1.78], [ 0.15,  0.700, 0], m.body)  // cabin
-  addCabinWindows(g, m.glass, 0.15, 0.7, 2.0, 1.78, 0.55)
-  addBox(g, [1.8,  0.08, 1.70], [ 0.15,  1.100, 0], m.body)  // roof
+// Fire-and-forget preload of all styles so style-swap is instant.
+for (const s of ['coupe', 'sedan', 'suv', 'truck']) {
+  loadModel(s).catch((e) => console.warn('preload failed for', s, e))
 }
 
-function buildSedan(g, m) {
-  addBox(g, [1.5,  0.75, 1.95], [ 1.20,  0.000, 0], m.body)
-  addBox(g, [1.2,  0.72, 1.95], [-1.50, -0.025, 0], m.body)
-  addBox(g, [2.2,  0.60, 1.95], [ 0.00,  0.050, 0], m.body)
-  addBox(g, [2.3,  0.85, 1.85], [ 0.00,  0.780, 0], m.body)
-  addCabinWindows(g, m.glass, 0.0, 0.78, 2.3, 1.85, 0.65)
-  addBox(g, [2.15, 0.08, 1.78], [ 0.00,  1.255, 0], m.body)
-}
-
-function buildSuv(g, m) {
-  addBox(g, [1.3,  1.00, 1.95], [ 1.30,  0.100, 0], m.body)
-  addBox(g, [1.2,  1.00, 1.95], [-1.40,  0.100, 0], m.body)
-  addBox(g, [2.4,  0.85, 1.95], [ 0.00,  0.180, 0], m.body)
-  addBox(g, [2.5,  1.15, 1.92], [ 0.00,  1.000, 0], m.body)
-  addCabinWindows(g, m.glass, 0.0, 1.0, 2.5, 1.92, 0.85)
-  addBox(g, [2.4,  0.10, 1.85], [ 0.00,  1.620, 0], m.body)
-}
-
-function buildMuscle(g, m) {
-  addBox(g, [1.7,  0.65, 1.98], [ 1.05, -0.050, 0], m.body)
-  addBox(g, [0.9,  0.60, 1.98], [-1.50, -0.075, 0], m.body)
-  addBox(g, [2.2,  0.55, 1.98], [ 0.00,  0.000, 0], m.body)
-  addBox(g, [1.7,  0.65, 1.82], [-0.05,  0.600, 0], m.body)
-  addCabinWindows(g, m.glass, -0.05, 0.6, 1.7, 1.82, 0.50)
-  addBox(g, [1.4,  0.08, 1.70], [-0.15,  0.950, 0], m.body)
-}
-
-const STYLE_BUILDERS = { coupe: buildCoupe, sedan: buildSedan, suv: buildSuv, muscle: buildMuscle }
-
-function addCommonTrim(group, m) {
-  const fb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), m.trim)
-  fb.position.set(2.0, -0.15, 0); fb.castShadow = true; group.add(fb)
-  const rb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), m.trim)
-  rb.position.set(-2.0, -0.15, 0); rb.castShadow = true; group.add(rb)
-  for (const z of [-0.7, 0.7]) {
-    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 10), m.headlight)
-    hl.position.set(1.98, 0.05, z); group.add(hl)
-  }
-  for (const z of [-0.7, 0.7]) {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), m.taillight)
-    tl.position.set(-1.98, 0.1, z); group.add(tl)
-  }
-}
+// Target horizontal length of the rendered car (along chassis +X).
+// Matches the physics collider so wheels visually sit at the corners.
+const VISUAL_CAR_LENGTH = 3.8
 
 export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22, style = 'coupe') {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
@@ -319,23 +272,78 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const chassisGroup = new THREE.Group()
   scene.add(chassisGroup)
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.35 })
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
-  const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
-  const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
-  const mats = { body: bodyMat, trim: trimMat, glass: glassMat, headlight: headlightMat, taillight: taillightMat }
+  // Single shared THREE.Color drives the body-paint tint of every loaded
+  // GLB style. The picker mutates it via setColor; all body-mesh materials
+  // (cloned from the model's `colormap` material) point at this Color
+  // instance, so changes propagate without rewalking the mesh tree.
+  const userColor = new THREE.Color(color)
+  let activeBodyMats = []
 
-  function setBodyStyle(nextStyle) {
-    // Dispose existing geometries (materials are shared, kept alive).
+  async function setBodyStyle(nextStyle) {
+    // Dispose old chassis-mesh children (geometries + cloned materials).
     while (chassisGroup.children.length) {
       const child = chassisGroup.children[0]
-      if (child.geometry) child.geometry.dispose()
+      child.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose()
+        if (obj.material && obj.material.__cloned) obj.material.dispose()
+      })
       chassisGroup.remove(child)
     }
-    const builder = STYLE_BUILDERS[nextStyle] || STYLE_BUILDERS.coupe
-    builder(chassisGroup, mats)
-    addCommonTrim(chassisGroup, mats)
+    activeBodyMats = []
+
+    let proto
+    try {
+      proto = await loadModel(nextStyle)
+    } catch {
+      // Network failure on first load — leave chassis empty, RaycastVehicle
+      // still runs (wheel meshes drawn separately). User sees floating
+      // wheels with no body; that's a tolerable failure mode for now.
+      return
+    }
+
+    const inst = proto.clone(true)
+
+    // Walk the model: hide wheels, clone body materials, swap to user color.
+    // Kenney models use one material ('colormap') with vertex/UV-encoded
+    // detail; mutating .color tints the painted body region while detail
+    // texels (windows, lights) get tinted along with it — acceptable for
+    // a stylised low-poly look.
+    inst.traverse((obj) => {
+      if (!obj.isMesh) return
+      if (/wheel/i.test(obj.name)) { obj.visible = false; return }
+      obj.castShadow = true
+      obj.receiveShadow = false
+      const cloned = obj.material.clone()
+      cloned.__cloned = true
+      cloned.color = userColor   // shared reference; setColor mutates this
+      obj.material = cloned
+      activeBodyMats.push(cloned)
+    })
+
+    // Orientation: GLTF spec is -Z forward; chassis-forward is local +X.
+    // R_y(-π/2) maps local -Z → local +X, aligning model-forward with
+    // chassis-forward.
+    inst.rotation.y = -Math.PI / 2
+
+    // Uniform scale so the longest horizontal axis matches the physics
+    // chassis length. Compute the bbox AFTER rotation so X/Z swap is
+    // accounted for.
+    inst.updateMatrixWorld(true)
+    const bbox = new THREE.Box3().setFromObject(inst)
+    const size = bbox.getSize(new THREE.Vector3())
+    const scale = VISUAL_CAR_LENGTH / Math.max(size.x, size.z)
+    inst.scale.setScalar(scale)
+
+    // Re-bbox at final scale and centre on X/Z. Place model bottom at
+    // chassis-local Y = -0.3 — body floor sits just above the wheel
+    // centres (wheels span chassis-local [-0.89, +0.11] at suspension
+    // rest), so most of the tyre is visible and the body looks supported.
+    inst.updateMatrixWorld(true)
+    bbox.setFromObject(inst)
+    const centre = bbox.getCenter(new THREE.Vector3())
+    inst.position.set(-centre.x, -bbox.min.y - 0.3, -centre.z)
+
+    chassisGroup.add(inst)
   }
   setBodyStyle(style)
 
@@ -455,7 +463,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   }
 
   function setColor(c) {
-    bodyMat.color.set(c)
+    userColor.set(c)
   }
 
   function getSpeedKmh() {

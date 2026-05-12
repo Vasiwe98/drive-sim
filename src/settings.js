@@ -5,10 +5,10 @@
 const KEY = 'drive-sim-settings-v1'
 
 export const BODY_STYLES = [
-  { id: 'coupe',  label: 'Coupe' },
-  { id: 'sedan',  label: 'Sedan' },
-  { id: 'suv',    label: 'SUV' },
-  { id: 'muscle', label: 'Muscle' },
+  { id: 'coupe', label: 'Coupe' },
+  { id: 'sedan', label: 'Sedan' },
+  { id: 'suv',   label: 'SUV' },
+  { id: 'truck', label: 'Truck' },
 ]
 
 export const TIMES_OF_DAY = [
