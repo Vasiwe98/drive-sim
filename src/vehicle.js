@@ -38,6 +38,18 @@ import * as THREE from 'three'
     this.world.rayTest(source, _tgt, raycastResult)
     chassisBody.collisionResponse = oldState
     let object = raycastResult.body
+    // Diagnostic snapshot of what the raycast actually returned, BEFORE any
+    // back-face filter or other post-processing. Read by the HUD so we can
+    // see whether rayTest is hitting nothing, hitting the deck top, or
+    // hitting the deck underside.
+    wheel.__diag = {
+      srcY: source.y,
+      tgtY: _tgt.y,
+      rawHit: !!object,
+      rawDist: object ? raycastResult.distance : -1,
+      rawNormY: object ? raycastResult.hitNormalWorld.y : 0,
+      rejected: false,
+    }
     // BACK-FACE REJECT: cannon's rayTest reports the first intersection even
     // when the ray STARTS inside a body — for a downward wheel ray that
     // started inside the deck box (chassis collider penetrated slightly),
@@ -50,6 +62,7 @@ import * as THREE from 'three'
     if (object && wheel.directionWorld.dot(raycastResult.hitNormalWorld) > 0) {
       raycastResult.reset()
       object = null
+      wheel.__diag.rejected = true
     }
     wheel.raycastResult.groundObject = 0
     if (object) {

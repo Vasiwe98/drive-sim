@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-11-sink-fix-v9-isolation'
+const DEPLOY_TAG = '2026-05-11-sink-fix-v10-raydiag'
 
 let panel = null
 let lastTick = 0
@@ -41,6 +41,19 @@ export function updateDebugPanel(car) {
   const suspensionForces = v.wheelInfos.map(w => (w.suspensionForce | 0))
   const suspensionLengths = v.wheelInfos.map(w => w.suspensionLength.toFixed(2))
 
+  // Per-wheel raycast diagnostics, populated by the patched castRay.
+  // Format: 'H' = hit (then dist), 'X' = rejected (back-face), '-' = miss.
+  // nY = Y component of hit normal (+1 = top face, -1 = bottom).
+  const rayDiag = v.wheelInfos.map(w => {
+    const d = w.__diag
+    if (!d) return '?'
+    const tag = d.rejected ? 'X' : d.rawHit ? 'H' : '-'
+    if (tag === '-') return tag
+    return `${tag}d${d.rawDist.toFixed(2)}n${d.rawNormY >= 0 ? '+' : ''}${d.rawNormY.toFixed(1)}`
+  })
+  const srcY = v.wheelInfos[0].__diag ? v.wheelInfos[0].__diag.srcY.toFixed(2) : '?'
+  const tgtY = v.wheelInfos[0].__diag ? v.wheelInfos[0].__diag.tgtY.toFixed(2) : '?'
+
   panel.textContent =
     `build ${DEPLOY_TAG}\n` +
     `chassis pos  ${b.position.x.toFixed(2)} ${b.position.y.toFixed(2)} ${b.position.z.toFixed(2)}\n` +
@@ -49,6 +62,8 @@ export function updateDebugPanel(car) {
     `engine force [${engineForces.join(' ')}]\n` +
     `suspensionForce [${suspensionForces.join(' ')}]\n` +
     `suspensionLength [${suspensionLengths.join(' ')}]\n` +
+    `ray src.y=${srcY} → tgt.y=${tgtY} (wheel 0)\n` +
+    `ray hits: ${rayDiag.join('  ')}\n` +
     `mass ${b.mass}  sleeping ${b.sleepState}\n` +
     `P=physics wireframe  ?spawn=deck`
 }
