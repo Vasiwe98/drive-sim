@@ -145,12 +145,25 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 //
-// Per-vehicle driving profile. Each style picks a real-world target so
-// the four cars *feel* different even though they share the same chassis
-// collider and wheel mounts. Top speed at equilibrium is engineForce /
-// (mass * linearDamping); 0-100 km/h is approximately mass * 27.8 / force.
-// Suspension stiffness/damping affects body roll and bump response;
-// frictionSlip changes grip (low slip = drifty truck feel).
+// Per-vehicle driving profile. All profiles share the EXACT coupe wheel
+// suspension parameters — varying those caused unexplained vertical
+// bouncing on the heavier vehicles, and the coupe values are the only
+// ones empirically validated. The handling differentiation comes
+// entirely from chassis-level parameters:
+//   mass         → acceleration response (a = F / m)
+//   engineForce  → top speed (v_top = F / (m * linearDamping))
+//   linearDamping → top speed (drag against engine)
+//   maxSteer     → turning radius
+// Mass also affects cornering inertia, so heavier cars *feel* heavier
+// even with identical suspension.
+const SHARED_WHEEL = {
+  suspensionStiffness: 40,
+  dampingRelaxation: 9,
+  dampingCompression: 14,
+  frictionSlip: 6.0,
+  rollInfluence: 0.01,
+  maxSuspensionForce: 500000,
+}
 export const VEHICLE_PROFILES = {
   coupe: {
     nickname: 'Porsche 911',
@@ -164,77 +177,49 @@ export const VEHICLE_PROFILES = {
     steerMinFactor: 0.30,
     linearDamping: 0.10,
     angularDamping: 0.30,
-    wheel: {
-      suspensionStiffness: 40,
-      dampingRelaxation: 9,
-      dampingCompression: 14,
-      frictionSlip: 6.0,
-      rollInfluence: 0.01,
-      maxSuspensionForce: 500000,
-    },
+    wheel: SHARED_WHEEL,
   },
   sedan: {
     nickname: 'BMW M5',
-    mass: 1900,
-    engineForce: 13500,
-    reverseForce: -6500,
-    handbrakeForce: 55000,
-    rollingBrake: 25,
+    mass: 1700,
+    engineForce: 13000,
+    reverseForce: -6000,
+    handbrakeForce: 50000,
+    rollingBrake: 20,
     maxSteer: 0.46,
-    steerHighSpeedKmh: 210,
+    steerHighSpeedKmh: 220,
     steerMinFactor: 0.30,
     linearDamping: 0.11,
-    angularDamping: 0.35,
-    wheel: {
-      suspensionStiffness: 34,
-      dampingRelaxation: 9,
-      dampingCompression: 14,
-      frictionSlip: 5.5,
-      rollInfluence: 0.02,
-      maxSuspensionForce: 500000,
-    },
+    angularDamping: 0.30,
+    wheel: SHARED_WHEEL,
   },
   suv: {
     nickname: 'Mercedes G-Wagon',
-    mass: 2500,
-    engineForce: 14500,
-    reverseForce: -7000,
-    handbrakeForce: 65000,
-    rollingBrake: 30,
-    maxSteer: 0.40,
-    steerHighSpeedKmh: 190,
-    steerMinFactor: 0.34,
+    mass: 2000,
+    engineForce: 13000,
+    reverseForce: -6000,
+    handbrakeForce: 50000,
+    rollingBrake: 20,
+    maxSteer: 0.42,
+    steerHighSpeedKmh: 220,
+    steerMinFactor: 0.30,
     linearDamping: 0.13,
-    angularDamping: 0.40,
-    wheel: {
-      suspensionStiffness: 28,
-      dampingRelaxation: 10,
-      dampingCompression: 14,
-      frictionSlip: 4.5,
-      rollInfluence: 0.04,
-      maxSuspensionForce: 500000,
-    },
+    angularDamping: 0.30,
+    wheel: SHARED_WHEEL,
   },
   truck: {
     nickname: 'Ford F-350',
-    mass: 3500,
-    engineForce: 15500,
-    reverseForce: -8000,
-    handbrakeForce: 90000,
-    rollingBrake: 40,
-    maxSteer: 0.36,
-    steerHighSpeedKmh: 170,
-    steerMinFactor: 0.38,
+    mass: 2400,
+    engineForce: 13000,
+    reverseForce: -6000,
+    handbrakeForce: 50000,
+    rollingBrake: 20,
+    maxSteer: 0.38,
+    steerHighSpeedKmh: 220,
+    steerMinFactor: 0.30,
     linearDamping: 0.15,
-    angularDamping: 0.45,
-    wheel: {
-      suspensionStiffness: 22,
-      dampingRelaxation: 10,
-      dampingCompression: 14,
-      frictionSlip: 4.0,
-      rollInfluence: 0.06,
-      maxSuspensionForce: 500000,
-    },
+    angularDamping: 0.30,
+    wheel: SHARED_WHEEL,
   },
 }
 
@@ -338,17 +323,11 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   // Mutate live physics state to match a profile. Idempotent — skips when
   // the profile is already active so the constructor's initial setBodyStyle
-  // call doesn't kick the freshly-built chassis.
-  //
-  // When the profile genuinely changes mid-drive, the old wheel
-  // suspensionLength still encodes the OLD equilibrium compression
-  // (g / (4 * old_stiffness)). With the new stiffness, that length
-  // produces a spring force that doesn't match the new chassis weight
-  // and the chassis drops/jumps until damping settles it. To kill that
-  // transient cleanly, we pre-set suspensionLength to the new
-  // equilibrium AND zero the chassis vertical velocity. The car keeps
-  // its horizontal velocity (no kinetic-energy loss), only the vertical
-  // transient is absorbed.
+  // call doesn't kick the freshly-built chassis. Zeroes chassis vertical
+  // velocity so a mid-air mass change doesn't carry kinetic energy into
+  // the new (heavier or lighter) profile. We don't pre-set
+  // wheel.suspensionLength because cannon's castRay overwrites it on the
+  // very next physics step.
   function applyProfile(p) {
     if (p === profile) return
     profile = p
@@ -356,7 +335,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     chassisBody.updateMassProperties()
     chassisBody.linearDamping = p.linearDamping
     chassisBody.angularDamping = p.angularDamping
-    const newEqCompression = 9.82 / (4 * p.wheel.suspensionStiffness)
     for (const w of vehicle.wheelInfos) {
       w.suspensionStiffness = p.wheel.suspensionStiffness
       w.dampingRelaxation = p.wheel.dampingRelaxation
@@ -364,8 +342,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
       w.frictionSlip = p.wheel.frictionSlip
       w.rollInfluence = p.wheel.rollInfluence
       w.maxSuspensionForce = p.wheel.maxSuspensionForce
-      w.suspensionLength = w.suspensionRestLength - newEqCompression
-      w.suspensionRelativeVelocity = 0
     }
     chassisBody.velocity.y = 0
   }
