@@ -374,10 +374,32 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   // Scratch vectors for ramp wheel placement
   const _wheelWorldMount = new CANNON.Vec3()
+  const _fwdLocalCannon = new CANNON.Vec3(1, 0, 0)
+  const _fwdWorldCannon = new CANNON.Vec3()
+  // Visual pitch overlay: chassis physics is yaw-locked, but on a ramp the
+  // mesh needs to tilt to match the slope or the wheels visibly detach
+  // from the body. Rotation axis is +Z in chassis-local frame (chassis-left
+  // / axle direction); positive angle pitches the nose up.
+  const _pitchAxis = new THREE.Vector3(0, 0, 1)
+  const _pitchQuat = new THREE.Quaternion()
 
   function syncMeshes(rampOverride = null) {
     chassisGroup.position.copy(chassisBody.position)
     chassisGroup.quaternion.copy(chassisBody.quaternion)
+
+    // Apply visual pitch when on a ramp so the chassis follows the slope.
+    // Sign = +1 if chassis-forward points uphill, -1 if downhill. Scaled
+    // by blendT so entry/exit fades in smoothly.
+    if (rampOverride && rampOverride.blendT > 0) {
+      const ramp = rampOverride.ramp
+      chassisBody.vectorToWorldFrame(_fwdLocalCannon, _fwdWorldCannon)
+      const fwdDotClimb = ramp.axis === 'x'
+        ? _fwdWorldCannon.x * ramp.axisSign
+        : _fwdWorldCannon.z * ramp.axisSign
+      const pitch = ramp.pitchAngle * Math.sign(fwdDotClimb) * rampOverride.blendT
+      _pitchQuat.setFromAxisAngle(_pitchAxis, pitch)
+      chassisGroup.quaternion.multiply(_pitchQuat)
+    }
 
     for (let i = 0; i < vehicle.wheelInfos.length; i++) {
       vehicle.updateWheelTransform(i)

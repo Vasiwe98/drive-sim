@@ -17,6 +17,11 @@ const ENTER_GATE = 1.5
 const RIDE_HEIGHT = 0.889
 const RAMP_ENGINE_FORCE = 13000
 const RAMP_REVERSE_FORCE = -6000
+// On a KINEMATIC body, applyForce is a no-op — cannon moves kinematic
+// bodies only by velocity. So while engaged we set velocity directly.
+// These cap the forward/reverse speed (m/s) the controller will produce.
+const RAMP_MAX_FWD_SPEED = 80   // ~290 km/h, matches flat-ground top
+const RAMP_MAX_REV_SPEED = 25   // ~90 km/h reverse cap
 // Speed-sensitive yaw — at standstill we barely turn, at speed we steer
 // like a real car. Avoids the "spin in place" feel at low speed.
 const MAX_YAW_RATE_FAST = 0.9    // rad/s at top of the speed scale
@@ -235,23 +240,28 @@ export function createRampController(car, ramps, input) {
         _fwdWorld.z /= len
       }
 
+      // Chassis is KINEMATIC while engaged → applyForce does nothing. Set
+      // velocity directly along chassis-forward. Treat input force as a
+      // target acceleration (force/mass) and integrate signed speed each
+      // frame, clamped to the ramp speed caps. This lets the player
+      // accelerate, decelerate, and reverse direction on a ramp — none of
+      // which worked before because the engine force was a no-op.
       let force = 0
       if (input.forward) force = RAMP_ENGINE_FORCE
       else if (input.backward) force = RAMP_REVERSE_FORCE
-      if (force !== 0) {
-        _forceScratch.set(_fwdWorld.x * force, 0, _fwdWorld.z * force)
-        // applyForce(force, relativePoint) — relativePoint is the OFFSET
-        // from body center to the application point, NOT a world position.
-        // Passing chassisBody.position would compute torque = pos × force,
-        // which creates a phantom yaw torque proportional to chassis X
-        // (T_y = -x * F_z) and a runaway feedback loop that pushes the
-        // car off the ramp side. Omit the second arg to apply at center.
-        car.chassisBody.applyForce(_forceScratch)
-      } else {
-        // Apply some friction to slow the car when no input
+      {
         const v = car.chassisBody.velocity
-        v.x *= 0.97
-        v.z *= 0.97
+        let speedFwd = v.x * _fwdWorld.x + v.z * _fwdWorld.z
+        if (force !== 0) {
+          const accel = force / car.chassisBody.mass
+          speedFwd += accel * dt
+          speedFwd = Math.max(-RAMP_MAX_REV_SPEED, Math.min(RAMP_MAX_FWD_SPEED, speedFwd))
+        } else {
+          // No input: coast with mild friction.
+          speedFwd *= 0.97
+        }
+        v.x = _fwdWorld.x * speedFwd
+        v.z = _fwdWorld.z * speedFwd
       }
 
       // ---- Yaw + lateral grip (fully manual; bypass cannon's angular
