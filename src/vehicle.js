@@ -55,7 +55,7 @@ import * as THREE from 'three'
     if (!object) {
       _manualRay.from.copy(source)
       _manualRay.to.copy(_tgt)
-      _manualRay._updateDirection()
+      _manualRay.updateDirection()
       let bestDist = Infinity
       const bodies = this.world.bodies
       for (let i = 0; i < bodies.length; i++) {
