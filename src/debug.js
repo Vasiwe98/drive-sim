@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-11-sink-fix-v8-kinematic'
+const DEPLOY_TAG = '2026-05-11-sink-fix-v9-isolation'
 
 let panel = null
 let lastTick = 0
@@ -49,5 +49,6 @@ export function updateDebugPanel(car) {
     `engine force [${engineForces.join(' ')}]\n` +
     `suspensionForce [${suspensionForces.join(' ')}]\n` +
     `suspensionLength [${suspensionLengths.join(' ')}]\n` +
-    `mass ${b.mass}  sleeping ${b.sleepState}`
+    `mass ${b.mass}  sleeping ${b.sleepState}\n` +
+    `P=physics wireframe  ?spawn=deck`
 }

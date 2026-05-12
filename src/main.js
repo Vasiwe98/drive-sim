@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import * as CANNON from 'cannon-es'
 import CannonDebugger from 'cannon-es-debugger'
 import { createScene } from './scene.js'
 import { createPhysicsWorld } from './physics.js'
@@ -6,7 +7,7 @@ import { createVehicle } from './vehicle.js'
 import { buildWorld } from './world.js'
 import { CameraRig } from './cameras.js'
 import { createRampController } from './rampController.js'
-import { input } from './input.js'
+import { input, onKeyDownOnce } from './input.js'
 import { ui, onStop, onStart } from './ui.js'
 import { createDebugPanel, updateDebugPanel } from './debug.js'
 
@@ -14,10 +15,24 @@ const canvas = document.getElementById('game')
 const { scene, camera, renderer, controls } = createScene(canvas)
 const { world, step } = createPhysicsWorld()
 
-const useDebugger = new URLSearchParams(location.search).has('debug')
-const cannonDebugger = useDebugger ? new CannonDebugger(scene, world, { color: 0xff00ff }) : null
+// Cannon debugger: wrap in a group so we can toggle wireframe visibility
+// without recreating it. Press P at runtime to flip.
+const debugGroup = new THREE.Group()
+scene.add(debugGroup)
+const cannonDebugger = new CannonDebugger(debugGroup, world, { color: 0xff00ff })
+debugGroup.visible = false
+onKeyDownOnce('KeyP', () => { debugGroup.visible = !debugGroup.visible })
 
-const { spawnPos, ramps } = buildWorld(scene, world)
+const { spawnPos: defaultSpawn, ramps } = buildWorld(scene, world)
+
+// Isolation test: ?spawn=deck drops the car 5m above the bridge deck centre.
+// Bypasses every ramp entirely. If the car still sinks here, the bug is in
+// the deck/suspension/collider — not the ramp→deck transition.
+const spawnMode = new URLSearchParams(location.search).get('spawn')
+const spawnPos = spawnMode === 'deck'
+  ? new CANNON.Vec3(0, 5, -70)
+  : defaultSpawn
+
 const car = createVehicle(world, scene, spawnPos)
 const rampController = createRampController(car, ramps, input)
 
