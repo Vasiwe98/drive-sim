@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-11-sink-fix-v11-naive-broadphase'
+const DEPLOY_TAG = '2026-05-11-sink-fix-v12-manual-raytest'
 
 let panel = null
 let lastTick = 0
@@ -64,6 +64,7 @@ export function updateDebugPanel(car) {
     `suspensionLength [${suspensionLengths.join(' ')}]\n` +
     `ray src.y=${srcY} → tgt.y=${tgtY} (wheel 0)\n` +
     `ray hits: ${rayDiag.join('  ')}\n` +
+    `manualHits: [${v.wheelInfos.map(w => (w.__diag ? w.__diag.manualHits : '?')).join(' ')}]\n` +
     `mass ${b.mass}  sleeping ${b.sleepState}\n` +
     `P=physics wireframe  ?spawn=deck`
 }

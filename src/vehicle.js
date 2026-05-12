@@ -22,6 +22,13 @@ import * as THREE from 'three'
   const _rv = new CANNON.Vec3()
   const _tgt = new CANNON.Vec3()
   const _chassisVel = new CANNON.Vec3()
+  // Module-scope scratch for manual ray fallback (no per-frame allocation).
+  const _manualRay = new CANNON.Ray()
+  const _manualResult = new CANNON.RaycastResult()
+  _manualRay.skipBackfaces = true
+  _manualRay.checkCollisionResponse = false
+  _manualRay.mode = CANNON.Ray.CLOSEST
+
   CANNON.RaycastVehicle.prototype.castRay = function patchedCastRay(wheel) {
     this.updateWheelTransformWorld(wheel)
     const chassisBody = this.chassisBody
@@ -38,6 +45,38 @@ import * as THREE from 'three'
     this.world.rayTest(source, _tgt, raycastResult)
     chassisBody.collisionResponse = oldState
     let object = raycastResult.body
+
+    // FALLBACK: world.rayTest has been observed returning null for valid
+    // ray/box intersections (cause TBD — broadphase, AABB caching, or some
+    // other internal). If that happens, scan world.bodies manually with a
+    // fresh Ray and pick the closest hit. O(n) over bodies; trivially fine
+    // for ~50.
+    let manualHits = 0
+    if (!object) {
+      _manualRay.from.copy(source)
+      _manualRay.to.copy(_tgt)
+      _manualRay._updateDirection()
+      let bestDist = Infinity
+      const bodies = this.world.bodies
+      for (let i = 0; i < bodies.length; i++) {
+        const body = bodies[i]
+        if (body === chassisBody) continue
+        _manualResult.reset()
+        _manualRay.intersectBody(body, _manualResult)
+        if (_manualResult.body && _manualResult.distance < bestDist) {
+          manualHits++
+          bestDist = _manualResult.distance
+          raycastResult.body = _manualResult.body
+          raycastResult.shape = _manualResult.shape
+          raycastResult.distance = _manualResult.distance
+          raycastResult.hitNormalWorld.copy(_manualResult.hitNormalWorld)
+          raycastResult.hitPointWorld.copy(_manualResult.hitPointWorld)
+          raycastResult.hasHit = true
+        }
+      }
+      object = raycastResult.body
+    }
+
     // Diagnostic snapshot of what the raycast actually returned, BEFORE any
     // back-face filter or other post-processing. Read by the HUD so we can
     // see whether rayTest is hitting nothing, hitting the deck top, or
@@ -49,6 +88,7 @@ import * as THREE from 'three'
       rawDist: object ? raycastResult.distance : -1,
       rawNormY: object ? raycastResult.hitNormalWorld.y : 0,
       rejected: false,
+      manualHits,
     }
     // BACK-FACE REJECT: cannon's rayTest reports the first intersection even
     // when the ray STARTS inside a body — for a downward wheel ray that
