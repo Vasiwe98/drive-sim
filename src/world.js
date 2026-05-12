@@ -51,7 +51,14 @@ export function addStaticBox(world, scene, pos, size, rot = null, color = null, 
 // `low`, `high`: world positions of the two end CENTERS of the top surface.
 // `width`: perpendicular full-extent of the ramp.
 function defineRamp(scene, ramps, opts) {
-  const { axis, low, high, width = 10, thickness = 0.4, color = COLOR_RAMP, extendHigh = 0 } = opts
+  // `extendLow` pads the ramp controller's *exit* footprint past the
+  // visual low edge so the chassis stays kinematically guided until the
+  // trailing wheels (~1.65 m behind chassis center) have cleared the
+  // ramp surface. Without it, driving off the low end at slow speed
+  // drops the car through the no-physics ramp visual to the ground.
+  // Default 2.5 m = chassis half-length + small margin, same as the
+  // bridge-side extendHigh values.
+  const { axis, low, high, width = 10, thickness = 0.4, color = COLOR_RAMP, extendHigh = 0, extendLow = 2.5 } = opts
 
   const dy = high.y - low.y
   const dAxis = axis === 'x' ? high.x - low.x : high.z - low.z
@@ -96,6 +103,17 @@ function defineRamp(scene, ramps, opts) {
     if (axisHigh > axisLow) axisMax += extendHigh
     else axisMin -= extendHigh
   }
+  // Symmetric extension past the LOW end, used ONLY for staying engaged
+  // (contains() — used for *entry* — does not include this; otherwise the
+  // controller would snap onto cars driving past the ramp on flat ground).
+  // exitAxisMin/Max are checked via containsForExit() when this ramp is
+  // already active.
+  let exitAxisMin = axisMin
+  let exitAxisMax = axisMax
+  if (extendLow) {
+    if (axisHigh > axisLow) exitAxisMin -= extendLow
+    else exitAxisMax += extendLow
+  }
   const perpCenter = axis === 'x' ? low.z : low.x
   const perpMin = perpCenter - width / 2
   const perpMax = perpCenter + width / 2
@@ -114,11 +132,23 @@ function defineRamp(scene, ramps, opts) {
     pitchAngle,           // absolute slope angle, magnitude
     axisSign: Math.sign(axisSpan),  // +1 if high is at higher axis coord
     extendHigh,           // ramp controller uses this to suppress launch-vy
+    extendLow,            // exit-only footprint extension (see containsForExit)
     contains(x, z) {
+      // ENTRY footprint: visual + extendHigh. Does NOT include extendLow so
+      // cars driving past the ramp on flat ground don't get snapped onto it.
       if (axis === 'x') {
         return x >= axisMin && x <= axisMax && z >= perpMin && z <= perpMax
       }
       return z >= axisMin && z <= axisMax && x >= perpMin && x <= perpMax
+    },
+    containsForExit(x, z) {
+      // EXIT footprint: visual + extendHigh + extendLow. Used by the ramp
+      // controller to keep this ramp active while the chassis (and trailing
+      // wheels) finish crossing the low edge.
+      if (axis === 'x') {
+        return x >= exitAxisMin && x <= exitAxisMax && z >= perpMin && z <= perpMax
+      }
+      return z >= exitAxisMin && z <= exitAxisMax && x >= perpMin && x <= perpMax
     },
     surfaceYAt(x, z) {
       const axisCoord = axis === 'x' ? x : z

@@ -92,10 +92,16 @@ export function createRampController(car, ramps, input) {
     const cz = car.chassisBody.position.z
 
     // --- Pick the best ramp the chassis is inside (highest surface wins) ---
+    // For the currently active ramp we use the EXIT footprint (includes
+    // extendLow) so the chassis stays kinematically guided until the
+    // trailing wheels have cleared the visual ramp. For new candidates we
+    // use the ENTRY footprint (visual + extendHigh only) so casual ground
+    // traffic past a ramp's low edge isn't snapped onto it.
     let bestRamp = null
     let bestSurface = -Infinity
     for (const r of ramps) {
-      if (!r.contains(cx, cz)) continue
+      const inFootprint = activeRamp === r ? r.containsForExit(cx, cz) : r.contains(cx, cz)
+      if (!inFootprint) continue
       const surf = r.surfaceYAt(cx, cz)
       if (Math.abs(cy - surf) > ENTER_GATE && activeRamp !== r) continue
       if (surf > bestSurface) {
@@ -223,8 +229,13 @@ export function createRampController(car, ramps, input) {
       const axisCoord = r.axis === 'x' ? cx : cz
       const axisSpan = axisHigh - axisLow
       const t = axisSpan !== 0 ? (axisCoord - axisLow) / axisSpan : 0
-      const inExtendedZone = r.extendHigh > 0 && t >= 1
-      car.chassisBody.velocity.y = inExtendedZone ? 0 : horizontalV * slopeSlope
+      // In either extension zone the controller is keeping the chassis on
+      // a flat surface (deck at high.y, ground-level platform at low.y),
+      // so the slope-inheritance vy is wrong — zero it instead. Inside the
+      // visual ramp (0 <= t <= 1) the slope-vy keeps the climb stable.
+      const inExtendedHigh = r.extendHigh > 0 && t >= 1
+      const inExtendedLow = r.extendLow > 0 && t <= 0
+      car.chassisBody.velocity.y = (inExtendedHigh || inExtendedLow) ? 0 : horizontalV * slopeSlope
     }
 
     // --- Direct chassis force/yaw while engaged ---
