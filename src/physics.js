@@ -4,7 +4,13 @@ export function createPhysicsWorld() {
   const world = new CANNON.World({
     gravity: new CANNON.Vec3(0, -9.82, 0),
   })
-  world.broadphase = new CANNON.SAPBroadphase(world)
+  // NaiveBroadphase (the default). We previously used SAPBroadphase for
+  // speed, but its aabbQuery — which RaycastVehicle's wheel rays go
+  // through — fails to return some static bodies (notably the bridge
+  // deck), so wheels reported zero contact on the deck and the chassis
+  // sat with fully-extended suspension visibly sunk into the surface.
+  // Naive is O(n²) for collision pairs, trivially fine for ~50 bodies.
+  world.broadphase = new CANNON.NaiveBroadphase()
   world.allowSleep = true
 
   const groundMaterial = new CANNON.Material('ground')

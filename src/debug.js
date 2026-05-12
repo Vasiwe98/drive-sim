@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-11-sink-fix-v10-raydiag'
+const DEPLOY_TAG = '2026-05-11-sink-fix-v11-naive-broadphase'
 
 let panel = null
 let lastTick = 0
