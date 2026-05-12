@@ -23,13 +23,44 @@ const MAX_YAW_RATE_FAST = 0.9    // rad/s at top of the speed scale
 const YAW_SPEED_SCALE_MPS = 20   // speed at which yaw factor hits 1.0
 const YAW_MIN_FACTOR = 0.08      // floor so you can still inch around at crawl
 
-// Target world-space yaw (rotation around +Y) so the chassis-forward (+X local)
-// points along the ramp's climbing direction. Our forward convention: chassis
-// +X in world is reached by yaw=0. Rotation around +Y by yaw rotates +X
-// toward +Z, so a yaw of -π/2 makes chassis-forward = +Z.
-function targetYawForRamp(ramp) {
-  if (ramp.axis === 'x') return ramp.axisSign > 0 ? 0 : Math.PI
-  return ramp.axisSign > 0 ? -Math.PI / 2 : Math.PI / 2
+// Target world-space yaw so chassis-forward (+X local) is aligned with the
+// ramp's axis. A ramp has TWO valid alignments — facing the high end
+// (climbing) or facing the low end (descending). We must pick the one
+// closer to the chassis's current yaw, otherwise the snap reverses the
+// car's facing 180° on entry. (Ramp 1 — bridge entry — is approached
+// from its low end going up. Ramp 2 — bridge exit — is approached from
+// its high end going down. Both share the same low/high definition, but
+// the entry side differs, and so does the correct facing.)
+//
+// Our forward convention: chassis +X in world is reached by yaw=0.
+// Rotation around +Y by yaw rotates +X toward +Z, so yaw=-π/2 makes
+// chassis-forward = +Z.
+function targetYawForRamp(ramp, currentChassisYaw) {
+  let yawHigh, yawLow
+  if (ramp.axis === 'x') {
+    yawHigh = ramp.axisSign > 0 ? 0 : Math.PI
+    yawLow = ramp.axisSign > 0 ? Math.PI : 0
+  } else {
+    yawHigh = ramp.axisSign > 0 ? -Math.PI / 2 : Math.PI / 2
+    yawLow = ramp.axisSign > 0 ? Math.PI / 2 : -Math.PI / 2
+  }
+  return angleDist(yawHigh, currentChassisYaw) <= angleDist(yawLow, currentChassisYaw)
+    ? yawHigh
+    : yawLow
+}
+
+function angleDist(a, b) {
+  let d = a - b
+  while (d > Math.PI) d -= 2 * Math.PI
+  while (d < -Math.PI) d += 2 * Math.PI
+  return Math.abs(d)
+}
+
+// Reads current yaw from chassis quaternion via forward-vector atan2.
+// Cheaper and more numerically stable than Euler extraction.
+function readChassisYaw(car, fwdLocal, fwdScratch) {
+  car.chassisBody.vectorToWorldFrame(fwdLocal, fwdScratch)
+  return Math.atan2(-fwdScratch.z, fwdScratch.x)
 }
 
 export function createRampController(car, ramps, input) {
@@ -78,10 +109,11 @@ export function createRampController(car, ramps, input) {
       // applyImpulse is a no-op on them. Wheel raycasts still update wheel
       // state each step (so at release the suspension data is fresh).
       car.chassisBody.type = CANNON.Body.KINEMATIC
-      // SNAP chassis yaw to the ramp's axis direction so the chassis starts
-      // perfectly aligned. Without this, any small pre-entry yaw causes
-      // the chassis to drift sideways off the ramp over its length.
-      currentYaw = targetYawForRamp(activeRamp)
+      // SNAP chassis yaw to the ramp's axis direction, but choose the
+      // orientation closer to the chassis's CURRENT facing so a downhill
+      // approach isn't flipped 180° on entry.
+      const yawBefore = readChassisYaw(car, _fwdLocal, _fwdWorld)
+      currentYaw = targetYawForRamp(activeRamp, yawBefore)
       car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       car.chassisBody.angularVelocity.set(0, 0, 0)
       // Also zero lateral velocity at snap so any pre-entry sideways
@@ -101,7 +133,8 @@ export function createRampController(car, ramps, input) {
     } else if (bestRamp && activeRamp && bestRamp !== activeRamp) {
       activeRamp = bestRamp
       exiting = false
-      currentYaw = targetYawForRamp(activeRamp)
+      const yawBefore = readChassisYaw(car, _fwdLocal, _fwdWorld)
+      currentYaw = targetYawForRamp(activeRamp, yawBefore)
       car.chassisBody.quaternion.setFromAxisAngle(_yawAxis, currentYaw)
       car.chassisBody.angularVelocity.set(0, 0, 0)
     } else if (!bestRamp && activeRamp) {
