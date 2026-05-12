@@ -3,7 +3,7 @@
 // on if visible: true is passed.
 
 // Bumped each deploy so we can verify the live bundle isn't stale via the HUD.
-const DEPLOY_TAG = '2026-05-12-down-ramp-yaw-fix-v13'
+const DEPLOY_TAG = '2026-05-12-spawn-faces-bridge-v14'
 
 let panel = null
 let lastTick = 0

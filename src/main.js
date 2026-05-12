@@ -41,11 +41,18 @@ cameraRig.setTarget(car.chassisBody)
 
 createDebugPanel(true)
 
+// Spawn facing -Z so the bridge entry ramp (z=-33 → z=-55) is dead-ahead
+// and the deck spawn variant points the car straight at the descent ramp.
+// Per chassis convention (+X = forward, rotation about +Y by yaw rotates
+// +X toward +Z), yaw=+π/2 puts chassis-forward = -Z world.
+const SPAWN_YAW = Math.PI / 2
+const _yAxis = new CANNON.Vec3(0, 1, 0)
+
 function resetCar() {
   car.chassisBody.position.copy(spawnPos)
   car.chassisBody.velocity.setZero()
   car.chassisBody.angularVelocity.setZero()
-  car.chassisBody.quaternion.set(0, 0, 0, 1)
+  car.chassisBody.quaternion.setFromAxisAngle(_yAxis, SPAWN_YAW)
   for (const w of car.vehicle.wheelInfos) {
     w.steering = 0
     w.rotation = 0
@@ -54,6 +61,11 @@ function resetCar() {
   }
   car.setSuspendVehicleControl(false)
 }
+
+// Apply spawn pose immediately so the very first rendered frame already
+// has the car oriented correctly — without this the car shows facing +X
+// for a moment until the user clicks Start.
+resetCar()
 
 onStop(resetCar)
 onStart(resetCar)
