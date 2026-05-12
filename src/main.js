@@ -10,10 +10,14 @@ import { createRampController } from './rampController.js'
 import { input, onKeyDownOnce } from './input.js'
 import { ui, onStop, onStart } from './ui.js'
 import { createDebugPanel, updateDebugPanel } from './debug.js'
+import { loadSettings, onSettingsChange } from './settings.js'
 
 const canvas = document.getElementById('game')
-const { scene, camera, renderer, controls } = createScene(canvas)
+const { scene, camera, renderer, controls, setTimeOfDay } = createScene(canvas)
 const { world, step } = createPhysicsWorld()
+
+const initialSettings = loadSettings()
+setTimeOfDay(initialSettings.time)
 
 // Cannon debugger: wrap in a group so we can toggle wireframe visibility
 // without recreating it. Press P at runtime to flip.
@@ -33,8 +37,14 @@ const spawnPos = spawnMode === 'deck'
   ? new CANNON.Vec3(0, 5, -70)
   : defaultSpawn
 
-const car = createVehicle(world, scene, spawnPos)
+const car = createVehicle(world, scene, spawnPos, initialSettings.color, initialSettings.style)
 const rampController = createRampController(car, ramps, input)
+
+onSettingsChange((s) => {
+  car.setColor(s.color)
+  car.setBodyStyle(s.style)
+  setTimeOfDay(s.time)
+})
 
 const cameraRig = new CameraRig(camera, controls)
 cameraRig.setTarget(car.chassisBody)

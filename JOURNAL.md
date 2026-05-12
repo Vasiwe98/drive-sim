@@ -4,6 +4,18 @@ Append-only log of decisions, surprises, blog-worthy moments. Entries tagged `[L
 
 ---
 
+## 2026-05-12 — Task 9: Settings menu (color + body style + day/night)
+
+Replaced the PLAN.md spec (color / maxSpeed / default camera) with something more visually punchy: color picker, body-style switcher (Coupe / Sedan / SUV / Muscle), and a Day/Night toggle. Saves to `localStorage` under one key; a custom `settings-change` event fans out to `vehicle.setColor`, `vehicle.setBodyStyle`, and `scene.setTimeOfDay`.
+
+The body-style swap is **visual-only**. Physics chassis collider (`CHASSIS_HALF`) and `WHEEL_MOUNTS` stay byte-for-byte identical across styles — only the `chassisGroup` children get disposed and rebuilt with different box proportions. So an SUV handles exactly like a coupe under the hood; it just looks 40cm taller. The cabin Y goes from 0.7 (coupe) → 0.78 (sedan) → 1.00 (SUV) → 0.60 (muscle), and roof / hood / trunk follow suit.
+
+Disposal matters: each style instantiates fresh `BoxGeometry` instances, so on swap I dispose the old geometries (`child.geometry.dispose()`) before removing the children. Materials are shared (one `bodyMat`, `trimMat`, `glassMat`, `headlightMat`, `taillightMat`) so changing color is `bodyMat.color.set(...)` — no rebuild needed.
+
+[LINKEDIN] In 2014, "the car has four body styles" meant modeling four separate vehicles in Blender — hours per style, multiple sets of UV unwraps, separate exports. In 2026, it's four 8-line functions that arrange boxes at different heights, and the physics layer doesn't even know the model changed. The right abstraction (visual mesh decoupled from collider) made what used to be a week into a 30-minute task.
+
+---
+
 ## 2026-05-10 — Project kickoff
 
 Approved plan locked: Three.js + Cannon-es + Vite + GitHub Pages, repo `drive-sim`, public. World style: arcade playground (roads, ramps, bridges, jump pads). Stretch goals: settings menu, mobile touch.

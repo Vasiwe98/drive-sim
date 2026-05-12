@@ -172,7 +172,87 @@ export const WHEEL_MOUNTS = [
   new CANNON.Vec3(-1.65, -0.15, -0.95), // 3 = RR
 ]
 
-export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
+// Body-style chassis builders. Each adds visual-only meshes to a group.
+// Physics collider + wheel mounts are FIXED across styles; only the mesh
+// proportions change. Width matches the chassis ~1.95m. Y origin is the
+// chassis-collider centre.
+function addBox(group, size, pos, material) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), material)
+  m.position.set(pos[0], pos[1], pos[2])
+  m.castShadow = true
+  group.add(m)
+  return m
+}
+
+function addCabinWindows(group, glassMat, cx, cy, cabinLen, cabinWidth, winH) {
+  const sideZ = cabinWidth / 2 + 0.005
+  for (const z of [sideZ, -sideZ]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(cabinLen - 0.15, winH, 0.02), glassMat)
+    w.position.set(cx, cy, z)
+    group.add(w)
+  }
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(0.02, winH, cabinWidth - 0.13), glassMat)
+  fw.position.set(cx + cabinLen / 2 - 0.04, cy, 0)
+  group.add(fw)
+  const rw = new THREE.Mesh(new THREE.BoxGeometry(0.02, winH, cabinWidth - 0.13), glassMat)
+  rw.position.set(cx - cabinLen / 2 + 0.04, cy, 0)
+  group.add(rw)
+}
+
+function buildCoupe(g, m) {
+  addBox(g, [1.4,  0.70, 1.95], [ 1.30,  0.000, 0], m.body)  // hood
+  addBox(g, [1.0,  0.65, 1.95], [-1.40, -0.025, 0], m.body)  // trunk
+  addBox(g, [2.4,  0.60, 1.95], [ 0.00,  0.050, 0], m.body)  // mid
+  addBox(g, [2.0,  0.75, 1.78], [ 0.15,  0.700, 0], m.body)  // cabin
+  addCabinWindows(g, m.glass, 0.15, 0.7, 2.0, 1.78, 0.55)
+  addBox(g, [1.8,  0.08, 1.70], [ 0.15,  1.100, 0], m.body)  // roof
+}
+
+function buildSedan(g, m) {
+  addBox(g, [1.5,  0.75, 1.95], [ 1.20,  0.000, 0], m.body)
+  addBox(g, [1.2,  0.72, 1.95], [-1.50, -0.025, 0], m.body)
+  addBox(g, [2.2,  0.60, 1.95], [ 0.00,  0.050, 0], m.body)
+  addBox(g, [2.3,  0.85, 1.85], [ 0.00,  0.780, 0], m.body)
+  addCabinWindows(g, m.glass, 0.0, 0.78, 2.3, 1.85, 0.65)
+  addBox(g, [2.15, 0.08, 1.78], [ 0.00,  1.255, 0], m.body)
+}
+
+function buildSuv(g, m) {
+  addBox(g, [1.3,  1.00, 1.95], [ 1.30,  0.100, 0], m.body)
+  addBox(g, [1.2,  1.00, 1.95], [-1.40,  0.100, 0], m.body)
+  addBox(g, [2.4,  0.85, 1.95], [ 0.00,  0.180, 0], m.body)
+  addBox(g, [2.5,  1.15, 1.92], [ 0.00,  1.000, 0], m.body)
+  addCabinWindows(g, m.glass, 0.0, 1.0, 2.5, 1.92, 0.85)
+  addBox(g, [2.4,  0.10, 1.85], [ 0.00,  1.620, 0], m.body)
+}
+
+function buildMuscle(g, m) {
+  addBox(g, [1.7,  0.65, 1.98], [ 1.05, -0.050, 0], m.body)
+  addBox(g, [0.9,  0.60, 1.98], [-1.50, -0.075, 0], m.body)
+  addBox(g, [2.2,  0.55, 1.98], [ 0.00,  0.000, 0], m.body)
+  addBox(g, [1.7,  0.65, 1.82], [-0.05,  0.600, 0], m.body)
+  addCabinWindows(g, m.glass, -0.05, 0.6, 1.7, 1.82, 0.50)
+  addBox(g, [1.4,  0.08, 1.70], [-0.15,  0.950, 0], m.body)
+}
+
+const STYLE_BUILDERS = { coupe: buildCoupe, sedan: buildSedan, suv: buildSuv, muscle: buildMuscle }
+
+function addCommonTrim(group, m) {
+  const fb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), m.trim)
+  fb.position.set(2.0, -0.15, 0); fb.castShadow = true; group.add(fb)
+  const rb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), m.trim)
+  rb.position.set(-2.0, -0.15, 0); rb.castShadow = true; group.add(rb)
+  for (const z of [-0.7, 0.7]) {
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 10), m.headlight)
+    hl.position.set(1.98, 0.05, z); group.add(hl)
+  }
+  for (const z of [-0.7, 0.7]) {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), m.taillight)
+    tl.position.set(-1.98, 0.1, z); group.add(tl)
+  }
+}
+
+export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22, style = 'coupe') {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
   const chassisBody = new CANNON.Body({ mass: 1500 }) // Porsche-like mass
   // No collider offset. A previous +0.5m offset (to sit at cabin level)
@@ -242,69 +322,22 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.35 })
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
-
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.95), bodyMat)
-  hood.position.set(1.3, 0.0, 0)
-  hood.castShadow = true
-  chassisGroup.add(hood)
-
-  const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.65, 1.95), bodyMat)
-  trunk.position.set(-1.4, -0.025, 0)
-  trunk.castShadow = true
-  chassisGroup.add(trunk)
-
-  const mid = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.95), bodyMat)
-  mid.position.set(0, 0.05, 0)
-  mid.castShadow = true
-  chassisGroup.add(mid)
-
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 1.78), bodyMat)
-  cabin.position.set(0.15, 0.7, 0)
-  cabin.castShadow = true
-  chassisGroup.add(cabin)
-
-  const sideWin = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.55, 0.02), glassMat)
-  sideWin.position.set(0.15, 0.7, 0.9)
-  chassisGroup.add(sideWin)
-  const sideWin2 = sideWin.clone()
-  sideWin2.position.z = -0.9
-  chassisGroup.add(sideWin2)
-
-  const frontWin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 1.65), glassMat)
-  frontWin.position.set(1.16, 0.7, 0)
-  chassisGroup.add(frontWin)
-  const rearWin = frontWin.clone()
-  rearWin.position.x = -0.86
-  chassisGroup.add(rearWin)
-
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 1.7), bodyMat)
-  roof.position.set(0.15, 1.1, 0)
-  roof.castShadow = true
-  chassisGroup.add(roof)
-
-  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), trimMat)
-  frontBumper.position.set(2.0, -0.15, 0)
-  frontBumper.castShadow = true
-  chassisGroup.add(frontBumper)
-
-  const rearBumper = frontBumper.clone()
-  rearBumper.position.x = -2.0
-  chassisGroup.add(rearBumper)
-
-  const headlightGeo = new THREE.SphereGeometry(0.18, 16, 10)
   const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
-  for (const z of [-0.7, 0.7]) {
-    const hl = new THREE.Mesh(headlightGeo, headlightMat)
-    hl.position.set(1.98, 0.05, z)
-    chassisGroup.add(hl)
-  }
-
   const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
-  for (const z of [-0.7, 0.7]) {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), taillightMat)
-    tl.position.set(-1.98, 0.1, z)
-    chassisGroup.add(tl)
+  const mats = { body: bodyMat, trim: trimMat, glass: glassMat, headlight: headlightMat, taillight: taillightMat }
+
+  function setBodyStyle(nextStyle) {
+    // Dispose existing geometries (materials are shared, kept alive).
+    while (chassisGroup.children.length) {
+      const child = chassisGroup.children[0]
+      if (child.geometry) child.geometry.dispose()
+      chassisGroup.remove(child)
+    }
+    const builder = STYLE_BUILDERS[nextStyle] || STYLE_BUILDERS.coupe
+    builder(chassisGroup, mats)
+    addCommonTrim(chassisGroup, mats)
   }
+  setBodyStyle(style)
 
   // Wheel meshes
   const wheelMeshes = []
@@ -439,6 +472,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     applyInput,
     syncMeshes,
     setColor,
+    setBodyStyle,
     getSpeedKmh,
     setSuspendVehicleControl,
   }

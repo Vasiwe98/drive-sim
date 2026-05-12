@@ -1,8 +1,8 @@
 # Tasks
 
-Last updated: 2026-05-11
-Current task: #8 Polish + deploy — driving is sound, tuning ramp launches
-Next action: Verify the launch ramp directly ahead of spawn produces a satisfying jump. If so, remove the debug HUD and consider stretch goals (settings menu, mobile touch).
+Last updated: 2026-05-12
+Current task: #9 Settings menu — landing-screen panel with color picker, body style (coupe/sedan/SUV/muscle), day/night toggle. Persisted to localStorage.
+Next action: Deploy + verify live. Then consider #10 (mobile touch) or HUD cleanup.
 
 ## Done
 - [x] #0 Scaffold project
@@ -20,8 +20,8 @@ Next action: Verify the launch ramp directly ahead of spawn produces a satisfyin
 
 ## In Progress
 - [ ] #8 Polish + deploy — final tuning round
+- [x] #9 Stretch: settings menu — color + body style (coupe/sedan/SUV/muscle) + day/night, persisted via localStorage. Body style is visual-only — physics collider and wheel mounts fixed.
 
 ## Pending
 - [ ] Remove or hide the debug HUD once ramp launches are verified
-- [ ] #9 Stretch: settings menu (color, max speed, default camera)
 - [ ] #10 Stretch: mobile touch controls

@@ -1,5 +1,38 @@
+import { loadSettings, saveSettings } from './settings.js'
+
 const landing = document.getElementById('landing')
 const startBtn = document.getElementById('start-btn')
+
+function initSettingsUI() {
+  const s = loadSettings()
+
+  const colorInput = document.getElementById('setting-color')
+  if (colorInput) {
+    colorInput.value = s.color
+    colorInput.addEventListener('input', (e) => saveSettings({ color: e.target.value }))
+  }
+
+  const styleButtons = document.querySelectorAll('#setting-style button')
+  for (const btn of styleButtons) {
+    if (btn.dataset.style === s.style) btn.classList.add('active')
+    btn.addEventListener('click', () => {
+      for (const b of styleButtons) b.classList.remove('active')
+      btn.classList.add('active')
+      saveSettings({ style: btn.dataset.style })
+    })
+  }
+
+  const timeButtons = document.querySelectorAll('#setting-time button')
+  for (const btn of timeButtons) {
+    if (btn.dataset.time === s.time) btn.classList.add('active')
+    btn.addEventListener('click', () => {
+      for (const b of timeButtons) b.classList.remove('active')
+      btn.classList.add('active')
+      saveSettings({ time: btn.dataset.time })
+    })
+  }
+}
+initSettingsUI()
 
 let started = false
 const startCallbacks = new Set()
