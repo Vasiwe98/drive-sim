@@ -1,31 +1,24 @@
-// Settings: color, body style, day/night. Persisted to localStorage.
-// Other modules import loadSettings() for initial values and
-// onSettingsChange(cb) to react when the user changes a control.
+// Settings: color + day/night. Persisted to localStorage. The
+// body-style selector was removed after the per-vehicle profile work
+// caused unexplained vertical bouncing on non-coupe cars — the car
+// configuration is now the byte-exact bridge-working-v15 baseline.
 
 const KEY = 'drive-sim-settings-v1'
-
-export const BODY_STYLES = [
-  { id: 'coupe', label: 'Coupe' },
-  { id: 'sedan', label: 'Sedan' },
-  { id: 'suv',   label: 'SUV' },
-  { id: 'truck', label: 'Truck' },
-]
 
 export const TIMES_OF_DAY = [
   { id: 'day',   label: '☀ Day' },
   { id: 'night', label: '☾ Night' },
 ]
 
-const DEFAULTS = { color: '#c23b22', style: 'coupe', time: 'day' }
-const STYLE_IDS = new Set(BODY_STYLES.map(s => s.id))
+const DEFAULTS = { color: '#c23b22', time: 'day' }
 const TIME_IDS = new Set(TIMES_OF_DAY.map(t => t.id))
 
 function clean(s) {
-  const out = { ...DEFAULTS, ...s }
+  const out = { color: DEFAULTS.color, time: DEFAULTS.time, ...s }
   if (typeof out.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(out.color)) out.color = DEFAULTS.color
-  if (!STYLE_IDS.has(out.style)) out.style = DEFAULTS.style
   if (!TIME_IDS.has(out.time)) out.time = DEFAULTS.time
-  return out
+  // Drop any legacy fields (e.g. `style`) from older builds.
+  return { color: out.color, time: out.time }
 }
 
 export function loadSettings() {

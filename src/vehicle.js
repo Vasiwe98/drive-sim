@@ -1,6 +1,5 @@
 import * as CANNON from 'cannon-es'
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
 // Monkey-patch CANNON.RaycastVehicle.castRay to extend the wheel ray length
 // from `restLength + radius` to `restLength + maxTravel + radius`.
@@ -145,83 +144,19 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 // Convention: +X is forward (headlights / hood), +Y is up, +Z is left.
 // W produces positive engine force, pushing the car in +X.
 //
-// Per-vehicle driving profile. All profiles share the EXACT coupe wheel
-// suspension parameters — varying those caused unexplained vertical
-// bouncing on the heavier vehicles, and the coupe values are the only
-// ones empirically validated. The handling differentiation comes
-// entirely from chassis-level parameters:
-//   mass         → acceleration response (a = F / m)
-//   engineForce  → top speed (v_top = F / (m * linearDamping))
-//   linearDamping → top speed (drag against engine)
-//   maxSteer     → turning radius
-// Mass also affects cornering inertia, so heavier cars *feel* heavier
-// even with identical suspension.
-const SHARED_WHEEL = {
-  suspensionStiffness: 40,
-  dampingRelaxation: 9,
-  dampingCompression: 14,
-  frictionSlip: 6.0,
-  rollInfluence: 0.01,
-  maxSuspensionForce: 500000,
-}
-export const VEHICLE_PROFILES = {
-  coupe: {
-    nickname: 'Porsche 911',
-    mass: 1500,
-    engineForce: 13000,
-    reverseForce: -6000,
-    handbrakeForce: 50000,
-    rollingBrake: 20,
-    maxSteer: 0.50,
-    steerHighSpeedKmh: 220,
-    steerMinFactor: 0.30,
-    linearDamping: 0.10,
-    angularDamping: 0.30,
-    wheel: SHARED_WHEEL,
-  },
-  sedan: {
-    nickname: 'BMW M5',
-    mass: 1700,
-    engineForce: 13000,
-    reverseForce: -6000,
-    handbrakeForce: 50000,
-    rollingBrake: 20,
-    maxSteer: 0.46,
-    steerHighSpeedKmh: 220,
-    steerMinFactor: 0.30,
-    linearDamping: 0.11,
-    angularDamping: 0.30,
-    wheel: SHARED_WHEEL,
-  },
-  suv: {
-    nickname: 'Mercedes G-Wagon',
-    mass: 2000,
-    engineForce: 13000,
-    reverseForce: -6000,
-    handbrakeForce: 50000,
-    rollingBrake: 20,
-    maxSteer: 0.42,
-    steerHighSpeedKmh: 220,
-    steerMinFactor: 0.30,
-    linearDamping: 0.13,
-    angularDamping: 0.30,
-    wheel: SHARED_WHEEL,
-  },
-  truck: {
-    nickname: 'Ford F-350',
-    mass: 2400,
-    engineForce: 13000,
-    reverseForce: -6000,
-    handbrakeForce: 50000,
-    rollingBrake: 20,
-    maxSteer: 0.38,
-    steerHighSpeedKmh: 220,
-    steerMinFactor: 0.30,
-    linearDamping: 0.15,
-    angularDamping: 0.30,
-    wheel: SHARED_WHEEL,
-  },
-}
+// Tuning target: Porsche 911 (992 Carrera S).
+//   mass 1500 kg, 0-100 km/h ~3.5s, top speed ~310 km/h, high tire grip.
+//   At F=13000N / m=1500kg average accel ≈ 8.7 m/s² → 0-100 km/h ≈ 3.2s.
+//   Top speed at equilibrium: F_engine = m * linearDamping * v
+//      → v_top = 13000 / (1500 * 0.10) = 87 m/s ≈ 313 km/h.
+const MAX_STEER = 0.5
+const MAX_ENGINE_FORCE = 13000
+const REVERSE_FORCE = -6000
+const HANDBRAKE_FORCE = 50000
+const ROLLING_BRAKE = 20
+// Steering reduces at high speed for stability (real cars + Porsche-like).
+const STEER_HIGH_SPEED_KMH = 220   // above this, steering scales down hard
+const STEER_MIN_FACTOR = 0.3
 
 // Chassis collider sits at cabin level (offset upward in chassis local frame).
 const CHASSIS_HALF = { x: 1.9, y: 0.25, z: 0.95 }
@@ -237,55 +172,31 @@ export const WHEEL_MOUNTS = [
   new CANNON.Vec3(-1.65, -0.15, -0.95), // 3 = RR
 ]
 
-// GLB model loader. Each style maps to a .glb in /public/models/. Vite
-// serves them from BASE_URL + 'models/'. Models are CC0 from Kenney's
-// Car Kit (kenney.nl/assets/car-kit). Wheels in the .glb are hidden —
-// we keep the existing procedural cylinder wheels because they sync
-// to RaycastVehicle.wheelInfos[i].worldTransform every frame.
-const MODEL_BASE = import.meta.env.BASE_URL + 'models/'
-const _loader = new GLTFLoader()
-const _modelPromises = new Map()
-
-function loadModel(style) {
-  if (!_modelPromises.has(style)) {
-    _modelPromises.set(style, new Promise((resolve, reject) => {
-      _loader.load(
-        `${MODEL_BASE}${style}.glb`,
-        (gltf) => resolve(gltf.scene),
-        undefined,
-        (err) => reject(err)
-      )
-    }))
-  }
-  return _modelPromises.get(style)
-}
-
-// Fire-and-forget preload of all styles so style-swap is instant.
-for (const s of ['coupe', 'sedan', 'suv', 'truck']) {
-  loadModel(s).catch((e) => console.warn('preload failed for', s, e))
-}
-
-// Target horizontal length of the rendered car (along chassis +X).
-// Matches the physics collider so wheels visually sit at the corners.
-const VISUAL_CAR_LENGTH = 3.8
-
-export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22, style = 'coupe') {
-  let profile = VEHICLE_PROFILES[style] || VEHICLE_PROFILES.coupe
-
+export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0), color = 0xc23b22) {
   const chassisShape = new CANNON.Box(new CANNON.Vec3(CHASSIS_HALF.x, CHASSIS_HALF.y, CHASSIS_HALF.z))
-  const chassisBody = new CANNON.Body({ mass: profile.mass })
+  const chassisBody = new CANNON.Body({ mass: 1500 }) // Porsche-like mass
   // No collider offset. A previous +0.5m offset (to sit at cabin level)
-  // created a "trap zone" at the bridge deck — see git history for the
-  // full debug story. Ramps have no physics body so the offset's original
-  // motivation (sit above ramp edges) is moot.
+  // created a "trap zone" at the bridge deck: when the collider rested on
+  // the deck top (chassis_y=3.0 with offset=0.5), the wheel mounts at
+  // chassis_y - 0.15 = 2.85 sat BELOW the deck top (3.25). Wheel raycasts
+  // started inside the deck box, hit the deck UNDERSIDE, returned
+  // hitNormalWorld = (0,-1,0), and the spring force was applied DOWNWARD
+  // — the chassis got pulled into the deck and stuck. With offset=0, the
+  // collider rests at chassis_y=3.5 where wheel mounts (3.35) are above
+  // the deck top, so raycasts hit the top face normally and the spring
+  // force pushes the chassis UP out of the trap. Ramps have no physics
+  // body (controller-driven), so the original "above ramp edge" rationale
+  // for the offset is moot.
   chassisBody.addShape(chassisShape)
   chassisBody.position.copy(spawnPos)
   chassisBody.angularVelocity.set(0, 0, 0)
   chassisBody.allowSleep = false
   // Lock pitch + roll. Only yaw allowed (for steering).
   chassisBody.angularFactor.set(0, 1, 0)
-  chassisBody.angularDamping = profile.angularDamping
-  chassisBody.linearDamping = profile.linearDamping
+  chassisBody.angularDamping = 0.3
+  // linearDamping doubles as our air-resistance proxy. With mass 1500 and
+  // engine 13000N, this sets the top speed (~87 m/s ≈ 310 km/h).
+  chassisBody.linearDamping = 0.10
   world.addBody(chassisBody)
 
   const vehicle = new CANNON.RaycastVehicle({
@@ -295,18 +206,21 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     indexUpAxis: 1,
   })
 
-  // Wheel params built from the current profile. setBodyStyle mutates
-  // each wheelInfo's fields directly when the user swaps vehicles.
+  // Wheel params tuned for a 1500 kg sports car. Stiffness * compression *
+  // mass = quarter-weight → equilibrium compression is independent of mass
+  // (stays around 6 cm at stiffness 40), so the same stiffness works.
+  // Damping and maxSuspensionForce scale up for the heavier load.
+  // frictionSlip = 6 gives Porsche-like high-grip tire behaviour.
   const wheelOptions = {
     radius: WHEEL_RADIUS,
     directionLocal: new CANNON.Vec3(0, -1, 0),
-    suspensionStiffness: profile.wheel.suspensionStiffness,
+    suspensionStiffness: 40,
     suspensionRestLength: 0.3,
-    frictionSlip: profile.wheel.frictionSlip,
-    dampingRelaxation: profile.wheel.dampingRelaxation,
-    dampingCompression: profile.wheel.dampingCompression,
-    maxSuspensionForce: profile.wheel.maxSuspensionForce,
-    rollInfluence: profile.wheel.rollInfluence,
+    frictionSlip: 6,
+    dampingRelaxation: 9,
+    dampingCompression: 14,
+    maxSuspensionForce: 500000,
+    rollInfluence: 0.01,
     axleLocal: new CANNON.Vec3(0, 0, 1),
     chassisConnectionPointLocal: new CANNON.Vec3(),
     maxSuspensionTravel: 0.3,
@@ -321,117 +235,76 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
 
   vehicle.addToWorld(world)
 
-  // Mutate live physics state to match a profile. Idempotent — skips when
-  // the profile is already active so the constructor's initial setBodyStyle
-  // call doesn't kick the freshly-built chassis. Zeroes chassis vertical
-  // velocity so a mid-air mass change doesn't carry kinetic energy into
-  // the new (heavier or lighter) profile. We don't pre-set
-  // wheel.suspensionLength because cannon's castRay overwrites it on the
-  // very next physics step.
-  function applyProfile(p) {
-    if (p === profile) return
-    profile = p
-    chassisBody.mass = p.mass
-    chassisBody.updateMassProperties()
-    chassisBody.linearDamping = p.linearDamping
-    chassisBody.angularDamping = p.angularDamping
-    for (const w of vehicle.wheelInfos) {
-      w.suspensionStiffness = p.wheel.suspensionStiffness
-      w.dampingRelaxation = p.wheel.dampingRelaxation
-      w.dampingCompression = p.wheel.dampingCompression
-      w.frictionSlip = p.wheel.frictionSlip
-      w.rollInfluence = p.wheel.rollInfluence
-      w.maxSuspensionForce = p.wheel.maxSuspensionForce
-    }
-    chassisBody.velocity.y = 0
-  }
-
   // --- Visuals ---
   const chassisGroup = new THREE.Group()
   scene.add(chassisGroup)
 
-  // Single shared THREE.Color drives the body-paint tint of every loaded
-  // GLB style. The picker mutates it via setColor; all body-mesh materials
-  // (cloned from the model's `colormap` material) point at this Color
-  // instance, so changes propagate without rewalking the mesh tree.
-  const userColor = new THREE.Color(color)
-  let activeBodyMats = []
+  const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.35 })
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, metalness: 0.4, roughness: 0.6 })
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a55, metalness: 0.1, roughness: 0.15, transparent: true, opacity: 0.7 })
 
-  async function setBodyStyle(nextStyle) {
-    // Apply the physics profile synchronously — engine, mass, suspension
-    // all flip immediately. The visual model swap runs asynchronously
-    // below (one frame of delay max since models are pre-loaded).
-    const nextProfile = VEHICLE_PROFILES[nextStyle] || VEHICLE_PROFILES.coupe
-    applyProfile(nextProfile)
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.95), bodyMat)
+  hood.position.set(1.3, 0.0, 0)
+  hood.castShadow = true
+  chassisGroup.add(hood)
 
-    // Dispose old chassis-mesh children (geometries + cloned materials).
-    while (chassisGroup.children.length) {
-      const child = chassisGroup.children[0]
-      child.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose()
-        if (obj.material && obj.material.__cloned) obj.material.dispose()
-      })
-      chassisGroup.remove(child)
-    }
-    activeBodyMats = []
+  const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.65, 1.95), bodyMat)
+  trunk.position.set(-1.4, -0.025, 0)
+  trunk.castShadow = true
+  chassisGroup.add(trunk)
 
-    let proto
-    try {
-      proto = await loadModel(nextStyle)
-    } catch {
-      // Network failure on first load — leave chassis empty, RaycastVehicle
-      // still runs (wheel meshes drawn separately). User sees floating
-      // wheels with no body; that's a tolerable failure mode for now.
-      return
-    }
+  const mid = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.95), bodyMat)
+  mid.position.set(0, 0.05, 0)
+  mid.castShadow = true
+  chassisGroup.add(mid)
 
-    const inst = proto.clone(true)
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 1.78), bodyMat)
+  cabin.position.set(0.15, 0.7, 0)
+  cabin.castShadow = true
+  chassisGroup.add(cabin)
 
-    // Walk the model: hide wheels, clone body materials, swap to user color.
-    // Kenney models use one material ('colormap') with vertex/UV-encoded
-    // detail; mutating .color tints the painted body region while detail
-    // texels (windows, lights) get tinted along with it — acceptable for
-    // a stylised low-poly look.
-    inst.traverse((obj) => {
-      if (!obj.isMesh) return
-      if (/wheel/i.test(obj.name)) { obj.visible = false; return }
-      obj.castShadow = true
-      obj.receiveShadow = false
-      const cloned = obj.material.clone()
-      cloned.__cloned = true
-      cloned.color = userColor   // shared reference; setColor mutates this
-      obj.material = cloned
-      activeBodyMats.push(cloned)
-    })
+  const sideWin = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.55, 0.02), glassMat)
+  sideWin.position.set(0.15, 0.7, 0.9)
+  chassisGroup.add(sideWin)
+  const sideWin2 = sideWin.clone()
+  sideWin2.position.z = -0.9
+  chassisGroup.add(sideWin2)
 
-    // Orientation: Kenney's UnityGLTF cars author forward as local +Z.
-    // R_y(+π/2) maps local +Z → local +X, aligning model-forward with
-    // chassis-forward (+X). Empirically verified — flipping the sign
-    // makes the cars drive in reverse.
-    inst.rotation.y = Math.PI / 2
+  const frontWin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 1.65), glassMat)
+  frontWin.position.set(1.16, 0.7, 0)
+  chassisGroup.add(frontWin)
+  const rearWin = frontWin.clone()
+  rearWin.position.x = -0.86
+  chassisGroup.add(rearWin)
 
-    // Uniform scale so the longest horizontal axis matches the physics
-    // chassis length. Compute the bbox AFTER rotation so X/Z swap is
-    // accounted for.
-    inst.updateMatrixWorld(true)
-    const bbox = new THREE.Box3().setFromObject(inst)
-    const size = bbox.getSize(new THREE.Vector3())
-    const scale = VISUAL_CAR_LENGTH / Math.max(size.x, size.z)
-    inst.scale.setScalar(scale)
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 1.7), bodyMat)
+  roof.position.set(0.15, 1.1, 0)
+  roof.castShadow = true
+  chassisGroup.add(roof)
 
-    // Re-bbox at final scale and centre on X/Z. Place model bottom at
-    // chassis-local Y = -0.55 — close to the wheel centres at rest
-    // (wheels span chassis-local [-0.89, +0.11]), so the body hugs the
-    // wheels without floating. Purely a visual offset; the physics
-    // chassis collider and wheel mounts are unchanged.
-    inst.updateMatrixWorld(true)
-    bbox.setFromObject(inst)
-    const centre = bbox.getCenter(new THREE.Vector3())
-    inst.position.set(-centre.x, -bbox.min.y - 0.55, -centre.z)
+  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.95), trimMat)
+  frontBumper.position.set(2.0, -0.15, 0)
+  frontBumper.castShadow = true
+  chassisGroup.add(frontBumper)
 
-    chassisGroup.add(inst)
+  const rearBumper = frontBumper.clone()
+  rearBumper.position.x = -2.0
+  chassisGroup.add(rearBumper)
+
+  const headlightGeo = new THREE.SphereGeometry(0.18, 16, 10)
+  const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff5c2, emissive: 0xfff5c2, emissiveIntensity: 1.2 })
+  for (const z of [-0.7, 0.7]) {
+    const hl = new THREE.Mesh(headlightGeo, headlightMat)
+    hl.position.set(1.98, 0.05, z)
+    chassisGroup.add(hl)
   }
-  setBodyStyle(style)
+
+  const taillightMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xff1010, emissiveIntensity: 0.8 })
+  for (const z of [-0.7, 0.7]) {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.45), taillightMat)
+    tl.position.set(-1.98, 0.1, z)
+    chassisGroup.add(tl)
+  }
 
   // Wheel meshes
   const wheelMeshes = []
@@ -476,18 +349,18 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     }
 
     const engineForce = inputState.forward
-      ? profile.engineForce
+      ? MAX_ENGINE_FORCE
       : inputState.backward
-        ? profile.reverseForce
+        ? REVERSE_FORCE
         : 0
 
     // Speed-sensitive steering: less wheel turn at high speed = stable.
     const speedKmh = getSpeedKmh()
     const steerFactor = Math.max(
-      profile.steerMinFactor,
-      1 - speedKmh / profile.steerHighSpeedKmh * (1 - profile.steerMinFactor)
+      STEER_MIN_FACTOR,
+      1 - speedKmh / STEER_HIGH_SPEED_KMH * (1 - STEER_MIN_FACTOR)
     )
-    const rawSteer = inputState.left ? profile.maxSteer : inputState.right ? -profile.maxSteer : 0
+    const rawSteer = inputState.left ? MAX_STEER : inputState.right ? -MAX_STEER : 0
     const steer = rawSteer * steerFactor
 
     vehicle.applyEngineForce(engineForce, 2)
@@ -495,12 +368,8 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     vehicle.setSteeringValue(steer, 0)
     vehicle.setSteeringValue(steer, 1)
 
-    const brake = inputState.brake ? profile.handbrakeForce : engineForce === 0 ? profile.rollingBrake : 0
+    const brake = inputState.brake ? HANDBRAKE_FORCE : engineForce === 0 ? ROLLING_BRAKE : 0
     for (let i = 0; i < 4; i++) vehicle.setBrake(brake, i)
-  }
-
-  function getProfileName() {
-    return profile.nickname
   }
 
   // Scratch vectors for ramp wheel placement
@@ -553,7 +422,7 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
   }
 
   function setColor(c) {
-    userColor.set(c)
+    bodyMat.color.set(c)
   }
 
   function getSpeedKmh() {
@@ -570,8 +439,6 @@ export function createVehicle(world, scene, spawnPos = new CANNON.Vec3(0, 4, 0),
     applyInput,
     syncMeshes,
     setColor,
-    setBodyStyle,
-    getProfileName,
     getSpeedKmh,
     setSuspendVehicleControl,
   }

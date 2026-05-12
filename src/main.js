@@ -37,16 +37,12 @@ const spawnPos = spawnMode === 'deck'
   ? new CANNON.Vec3(0, 5, -70)
   : defaultSpawn
 
-const car = createVehicle(world, scene, spawnPos, initialSettings.color, initialSettings.style)
+const car = createVehicle(world, scene, spawnPos, initialSettings.color)
 const rampController = createRampController(car, ramps, input)
-
-ui.setVehicleName(car.getProfileName())
 
 onSettingsChange((s) => {
   car.setColor(s.color)
-  car.setBodyStyle(s.style)
   setTimeOfDay(s.time)
-  ui.setVehicleName(car.getProfileName())
 })
 
 const cameraRig = new CameraRig(camera, controls)
