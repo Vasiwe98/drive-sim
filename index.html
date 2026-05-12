@@ -93,8 +93,67 @@
         color: #888;
       }
       .footer a { color: #666; text-decoration: none; border-bottom: 1px dotted #aaa; }
+
+      .settings {
+        margin: 0 0 20px;
+        padding: 14px 14px 10px;
+        background: rgba(26, 29, 46, 0.04);
+        border: 1px solid rgba(26, 29, 46, 0.08);
+        border-radius: 10px;
+        text-align: left;
+      }
+      .settings-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: #888;
+        margin: 0 0 10px;
+        text-transform: uppercase;
+      }
+      .settings-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+      .settings-row > label {
+        width: 52px;
+        color: #555;
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .settings-row input[type="color"] {
+        width: 38px;
+        height: 28px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        cursor: pointer;
+        background: none;
+        padding: 0;
+      }
+      .btn-group { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+      .btn-group button {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 6px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background: white;
+        color: #555;
+        cursor: pointer;
+        transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+      }
+      .btn-group button.active {
+        background: #ff6b35;
+        color: white;
+        border-color: #ff6b35;
+      }
+      .btn-group button:hover:not(.active) { background: #f4f4f4; }
     </style>
-    <script type="module" crossorigin src="/drive-sim/assets/index-C3f2oKu4.js"></script>
+    <script type="module" crossorigin src="/drive-sim/assets/index--yygNO2b.js"></script>
   </head>
   <body>
     <canvas id="game"></canvas>
@@ -112,6 +171,29 @@
           <div class="desc">Cycle camera mode</div>
           <div class="keys"><span class="key">Mouse</span></div>
           <div class="desc">Orbit (in free-camera mode)</div>
+        </div>
+        <div class="settings">
+          <div class="settings-title">Customize</div>
+          <div class="settings-row">
+            <label>Color</label>
+            <input type="color" id="setting-color" />
+          </div>
+          <div class="settings-row">
+            <label>Body</label>
+            <div class="btn-group" id="setting-style">
+              <button data-style="coupe">Coupe</button>
+              <button data-style="sedan">Sedan</button>
+              <button data-style="suv">SUV</button>
+              <button data-style="muscle">Muscle</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <label>Time</label>
+            <div class="btn-group" id="setting-time">
+              <button data-time="day">☀ Day</button>
+              <button data-time="night">☾ Night</button>
+            </div>
+          </div>
         </div>
         <button id="start-btn">START DRIVING</button>
         <div class="footer">
